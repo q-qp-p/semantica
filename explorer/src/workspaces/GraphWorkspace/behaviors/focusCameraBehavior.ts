@@ -5,11 +5,16 @@ export const focusCameraBehavior: GraphBehavior = {
   attach: () => {},
   detach: () => {},
   performAction: (context, action) => {
-    if (action.type !== "focusNode") {
-      return false;
+    if (action.type === "focusNode") {
+      context.focusNodeInView(action.nodeId);
+      return true;
     }
 
-    context.focusNodeInView(action.nodeId);
-    return true;
+    if (action.type === "centerSelection") {
+      context.centerSelectionInView(action.nodeId);
+      return true;
+    }
+
+    return false;
   },
 };

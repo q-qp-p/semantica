@@ -1,23 +1,23 @@
 import type { GraphBehavior } from "./types";
 
 export function createSearchFocusBehavior(): GraphBehavior {
-  let lastFocusedNodeId = "";
+  let lastSelectedNodeId = "";
 
   return {
     id: "search-focus",
     attach: () => {},
     detach: () => {
-      lastFocusedNodeId = "";
+      lastSelectedNodeId = "";
     },
     onStateChange: (context, interactionState) => {
-      const nextFocusedNodeId = interactionState.focusedNodeId;
-      if (!nextFocusedNodeId || nextFocusedNodeId === lastFocusedNodeId) {
-        lastFocusedNodeId = nextFocusedNodeId;
+      const nextSelectedNodeId = interactionState.selectedNodeId;
+      if (!nextSelectedNodeId || nextSelectedNodeId === lastSelectedNodeId) {
+        lastSelectedNodeId = nextSelectedNodeId;
         return;
       }
 
-      lastFocusedNodeId = nextFocusedNodeId;
-      context.dispatchAction({ type: "focusNode", nodeId: nextFocusedNodeId });
+      lastSelectedNodeId = nextSelectedNodeId;
+      context.dispatchAction({ type: "centerSelection", nodeId: nextSelectedNodeId });
     },
   };
 }

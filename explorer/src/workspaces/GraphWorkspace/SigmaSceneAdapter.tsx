@@ -24,6 +24,8 @@ export const SigmaSceneAdapter = forwardRef<GraphSceneHandle, GraphSceneProps>(
     useImperativeHandle(ref, () => ({
       fitView: () => canvasRef.current?.fitView(),
       focusNode: (nodeId: string) => canvasRef.current?.focusNode(nodeId),
+      zoomIn: () => canvasRef.current?.zoomIn(),
+      zoomOut: () => canvasRef.current?.zoomOut(),
       getRuntime: () => runtimeRef.current,
       setLayoutRunning: onLayoutRunningChange
         ? (running: boolean) => {
