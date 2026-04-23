@@ -24,7 +24,5 @@
     "extraction",
     "mcp"
   ],
-  "skills": "./skills",
-  "agents": "./agents",
-  "hooks": "./hooks/hooks.json"
+  "skills": "./skills"
 }
