@@ -1242,6 +1242,7 @@ export function resolveDisplayStateSnapshot(
   options?: {
     aggregationEnabled?: boolean;
     collapsedNeighborhoodNodeIds?: Iterable<string>;
+    groupedViewAvailable?: boolean;
   },
 ): GraphDisplayStateSnapshot {
   const aggregationEnabled = options?.aggregationEnabled ?? true;
@@ -1249,7 +1250,7 @@ export function resolveDisplayStateSnapshot(
     Array.from(options?.collapsedNeighborhoodNodeIds ?? []).filter((nodeId) => typeof nodeId === "string"),
   );
   const displayState = createEmptyDisplayState(selectedNodeId, aggregationEnabled);
-  displayState.groupedViewAvailable = computeGraphAnalyticsBase(graph, {
+  displayState.groupedViewAvailable = options?.groupedViewAvailable ?? computeGraphAnalyticsBase(graph, {
     computeCommunities: true,
     computeCentrality: false,
   }).communitiesByNode.size > 0;
@@ -1395,6 +1396,7 @@ export function resolveDisplayGraph(
   options?: {
     aggregationEnabled?: boolean;
     collapsedNeighborhoodNodeIds?: Iterable<string>;
+    groupedViewAvailable?: boolean;
   },
 ): GraphDisplayResult {
   const aggregationEnabled = options?.aggregationEnabled ?? true;
@@ -1404,6 +1406,7 @@ export function resolveDisplayGraph(
   const displayState = resolveDisplayStateSnapshot(selectedNodeId, activePath, viewMode, {
     aggregationEnabled,
     collapsedNeighborhoodNodeIds,
+    groupedViewAvailable: options?.groupedViewAvailable,
   });
   const isFocusedView = viewMode === "focused" && Boolean(selectedNodeId) && graph.hasNode(selectedNodeId);
   const isGroupedView = viewMode === "grouped";
