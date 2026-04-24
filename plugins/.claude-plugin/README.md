@@ -91,7 +91,8 @@ claude --plugin-dir ./plugins
 Or inside a session:
 
 ```bash
-/plugin install ./plugins
+/plugin marketplace add ./plugins
+/plugin install semantica@semantica-local
 ```
 
 Verify:

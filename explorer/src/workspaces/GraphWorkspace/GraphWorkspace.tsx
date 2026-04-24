@@ -923,6 +923,7 @@ export function GraphWorkspace() {
             sampleNodeIds?: string[];
           }
         | undefined;
+
       const anchorNodeId = communityGroup?.anchorNodeId || communityGroup?.sampleNodeIds?.[0] || "";
       if (anchorNodeId && graph.hasNode(anchorNodeId)) {
         return {
@@ -1792,6 +1793,7 @@ export function GraphWorkspace() {
 
     return groups;
   }, [
+    canActivateFocusedMode,
     displayState.groupedViewAvailable,
     displayState.groupedViewReason,
     handlePluginAction,

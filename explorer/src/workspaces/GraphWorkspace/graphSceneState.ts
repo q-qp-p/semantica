@@ -1925,6 +1925,7 @@ export function resolveDisplayGraph(
   options?: {
     aggregationEnabled?: boolean;
     collapsedNeighborhoodNodeIds?: Iterable<string>;
+    groupedViewAvailable?: boolean;
   },
 ): GraphDisplayResult {
   const aggregationEnabled = options?.aggregationEnabled ?? true;
@@ -1934,6 +1935,7 @@ export function resolveDisplayGraph(
   const displayState = resolveDisplayStateSnapshot(selectedNodeId, activePath, viewMode, {
     aggregationEnabled,
     collapsedNeighborhoodNodeIds,
+    groupedViewAvailable: options?.groupedViewAvailable,
   });
   const isFocusedView = viewMode === "focused" && Boolean(selectedNodeId) && graph.hasNode(selectedNodeId);
   const isGroupedView = viewMode === "grouped";
