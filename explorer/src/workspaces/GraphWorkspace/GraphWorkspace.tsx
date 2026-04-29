@@ -29,7 +29,7 @@ import { GraphLoadingOverlay } from "./GraphLoadingOverlay";
 import { createGraphLoadProgress, getGraphLoadTitle } from "./graphLoading";
 import { GRAPH_THEME, withAlpha } from "./graphTheme";
 import type { GraphEntityShapeVariant } from "./graphTheme";
-import { checkGroupedViewAvailability, resolveDisplayGraph, resolveDisplayStateSnapshot, resolveGroupedDisplayNodeId, resolveGroupedDisplayStateSnapshot } from "./graphSceneState";
+import { buildHeatmapRenderSnapshot, buildStructuralDistanceSnapshot, checkGroupedViewAvailability, getDistanceBandColor, resolveDisplayGraph, resolveDisplayStateSnapshot, resolveGroupedDisplayNodeId, resolveGroupedDisplayStateSnapshot, summarizeDistanceBuckets } from "./graphSceneState";
 import {
   type GraphPlugin,
   type GraphPluginActionRequest,
@@ -42,6 +42,8 @@ import type { LinkPrediction, PathResponse } from "./GraphInspectorPanel";
 import type { GraphSceneHandle, GraphSceneRuntime } from "./scene";
 import type {
   GraphAnalyticsSnapshot,
+  GraphDistanceVisualMode,
+  GraphDistanceVisualState,
   GraphDisplayStateSnapshot,
   GraphDiagnosticsSnapshot,
   GraphEffectToggle,
@@ -103,6 +105,18 @@ type GraphToolbarGroup = {
   items: GraphToolbarItem[];
 };
 
+type SemanticNeighborhoodResponse = {
+  anchor_node: string;
+  total: number;
+  neighbors: Array<{
+    id: string;
+    type: string;
+    content: string;
+    similarity: number;
+    hop_distance?: number | null;
+  }>;
+};
+
 type LazyPluginRegistryEntry = {
   id: string;
   panelId: string;
@@ -117,6 +131,9 @@ type LazyPluginRegistryEntry = {
 };
 
 const PROVENANCE_KEYS = ["source", "source_url", "pmid", "pmids", "evidence", "provenance", "confidence"] as const;
+const EMPTY_DISTANCE_RECORD: Record<string, number> = {};
+const STRUCTURAL_DISTANCE_MAX_HOPS = 6;
+const HEATMAP_DISTANCE_MAX_HOPS = 3;
 const DEFAULT_EFFECTS_STATE: GraphEffectsState = {
   pathPulseEnabled: false,
   pathFlowEnabled: false,
@@ -1107,6 +1124,19 @@ export function GraphWorkspace() {
   const [distanceMode, setDistanceMode] = useState<"off" | "structural" | "semantic">("off");
   // FR-5: Distance heatmap layout
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
+  const [semanticDistanceState, setSemanticDistanceState] = useState<{
+    anchorNodeId: string | null;
+    scores: Record<string, number>;
+    count: number;
+    status: GraphDistanceVisualState["status"];
+    error: string | null;
+  }>({
+    anchorNodeId: null,
+    scores: EMPTY_DISTANCE_RECORD,
+    count: 0,
+    status: "idle",
+    error: null,
+  });
 
   const debouncedTime = useDebounce(scrubberTime, 150);
   const prevActiveIdsRef = useRef<Set<string>>(new Set());
@@ -1560,158 +1590,248 @@ export function GraphWorkspace() {
     setLastGroupedSelectedNodeId("");
   }, [summary?.edgeCount, summary?.nodeCount]);
 
-  // ── Distance Intelligence helpers ──────────────────────────────
-  // BFS over the in-memory graphology graph; returns hop distance from startId.
-  function bfsDistances(startId: string, maxHops: number): Map<string, number> {
-    const dist = new Map<string, number>();
-    if (!graph.hasNode(startId)) return dist;
-    const queue: [string, number][] = [[startId, 0]];
-    dist.set(startId, 0);
-    while (queue.length > 0) {
-      const [nodeId, hop] = queue.shift()!;
-      if (hop >= maxHops) continue;
-      for (const nb of graph.neighbors(nodeId)) {
-        if (!dist.has(nb)) {
-          dist.set(nb, hop + 1);
-          queue.push([nb, hop + 1]);
-        }
-      }
-    }
-    return dist;
-  }
+  const activeDistanceMode: GraphDistanceVisualMode = egoModeEnabled
+    ? "ego"
+    : heatmapEnabled
+      ? "heatmap"
+      : distanceMode;
+  const distanceAnchorNodeId = viewMode === "full" && selectedNodeId && graph.hasNode(selectedNodeId)
+    ? selectedNodeId
+    : "";
+  const distanceAnchorLabel = distanceAnchorNodeId
+    ? String((graph.getNodeAttributes(distanceAnchorNodeId) as NodeAttributes).label || distanceAnchorNodeId)
+    : null;
+  const distanceMaxHops = activeDistanceMode === "ego"
+    ? egoMaxHops
+    : activeDistanceMode === "heatmap"
+      ? HEATMAP_DISTANCE_MAX_HOPS
+      : STRUCTURAL_DISTANCE_MAX_HOPS;
+  const structuralDistances = useMemo(
+    () => (
+      distanceAnchorNodeId && activeDistanceMode !== "off"
+        ? buildStructuralDistanceSnapshot(graph, distanceAnchorNodeId, distanceMaxHops)
+        : EMPTY_DISTANCE_RECORD
+    ),
+    [activeDistanceMode, distanceAnchorNodeId, distanceMaxHops, graphVersion],
+  );
+  const distanceCounts = useMemo(
+    () => summarizeDistanceBuckets(structuralDistances, graph.order),
+    [structuralDistances, graphVersion],
+  );
+  const heatmapRenderSnapshot = useMemo(
+    () => (
+      activeDistanceMode === "heatmap" && distanceAnchorNodeId
+        ? buildHeatmapRenderSnapshot(graph, distanceAnchorNodeId, structuralDistances, HEATMAP_DISTANCE_MAX_HOPS)
+        : null
+    ),
+    [activeDistanceMode, distanceAnchorNodeId, graphVersion, structuralDistances],
+  );
 
-  function hopBandColor(hops: number): string {
-    if (hops === 0) return "#3fb950";   // anchor – green
-    if (hops === 1) return "#56d364";   // direct – light green
-    if (hops <= 3) return "#e3b341";    // near – amber
-    if (hops <= 6) return "#d29922";    // mid-range – orange
-    return "#ff7b72";                    // distant – red
-  }
-
-  function restoreNodeColors() {
-    graph.forEachNode((nodeId) => {
-      const attrs = graph.getNodeAttributes(nodeId) as { baseColor?: string; color?: string; baseSize?: number; size?: number };
-      if (attrs.baseColor) graph.setNodeAttribute(nodeId, "color", attrs.baseColor);
-      if (attrs.baseSize) graph.setNodeAttribute(nodeId, "size", attrs.baseSize);
-    });
-  }
-
-  function restoreEdgeColors() {
-    graph.forEachEdge((edgeId) => {
-      const attrs = graph.getEdgeAttributes(edgeId) as { baseColor?: string };
-      if (attrs.baseColor) graph.setEdgeAttribute(edgeId, "color", attrs.baseColor);
-    });
-  }
-
-  // FR-2 + FR-5: Combined node styling effect — ego mode and heatmap share a single
-  // effect so restoreNodeColors() is never called from two competing effects at once.
   useEffect(() => {
-    const activeMode = egoModeEnabled ? "ego" : heatmapEnabled ? "heatmap" : "off";
-
-    if (activeMode === "off" || !selectedNodeId || !graph.hasNode(selectedNodeId)) {
-      restoreNodeColors();
-      requestAnimationFrame(() => {
-        setGraphVersion((v) => v + 1);
-        sceneRef.current?.getRuntime()?.requestRender();
-      });
+    if (viewMode === "full") {
       return;
     }
+    setEgoModeEnabled(false);
+    setHeatmapEnabled(false);
+    setDistanceMode("off");
+  }, [viewMode]);
 
-    if (activeMode === "ego") {
-      const dist = bfsDistances(selectedNodeId, egoMaxHops);
-      const maxD = Math.max(1, egoMaxHops);
-      graph.forEachNode((nodeId) => {
-        const attrs = graph.getNodeAttributes(nodeId) as { baseColor?: string; color?: string; baseSize?: number; size?: number };
-        const baseColor = attrs.baseColor || attrs.color || "#58a6ff";
-        const baseSize = attrs.baseSize || attrs.size || 8;
-        const d = dist.get(nodeId);
-        if (d === undefined) {
-          graph.setNodeAttribute(nodeId, "color", withAlpha(baseColor, 0.06));
-          graph.setNodeAttribute(nodeId, "size", Math.max(0.5, baseSize * 0.22));
-        } else {
-          const ratio = d / (maxD + 1);
-          graph.setNodeAttribute(nodeId, "color", withAlpha(baseColor, 1 - ratio * 0.65));
-          graph.setNodeAttribute(nodeId, "size", Math.max(1, baseSize * (1 - ratio * 0.38)));
-        }
-      });
-    } else {
-      // heatmap
-      const dist = bfsDistances(selectedNodeId, 20);
-      graph.forEachNode((nodeId) => {
-        const d = dist.get(nodeId);
-        graph.setNodeAttribute(nodeId, "color", d !== undefined ? hopBandColor(d) : "rgba(40,55,72,0.55)");
-      });
-    }
-
-    requestAnimationFrame(() => {
-      setGraphVersion((v) => v + 1);
-      sceneRef.current?.getRuntime()?.requestRender();
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [egoModeEnabled, egoMaxHops, heatmapEnabled, selectedNodeId]);
-
-  // FR-3 frontend: Distance overlay — color edges by structural hop distance or semantic similarity
   useEffect(() => {
-    if (distanceMode === "off" || !selectedNodeId || !graph.hasNode(selectedNodeId)) {
-      if (distanceMode === "off") {
-        restoreEdgeColors();
-        requestAnimationFrame(() => {
-          setGraphVersion((v) => v + 1);
-          sceneRef.current?.getRuntime()?.requestRender();
-        });
-      }
-      return;
+    if (activeDistanceMode === "off" || !selectedNodeId || !graph.hasNode(selectedNodeId)) {
+      setEgoModeEnabled(false);
+      setHeatmapEnabled(false);
+      setDistanceMode("off");
     }
+  }, [activeDistanceMode, graphVersion, selectedNodeId]);
 
-    if (distanceMode === "structural") {
-      const dist = bfsDistances(selectedNodeId, 20);
-      graph.forEachEdge((edgeId, _attrs, source, target) => {
-        const d = Math.min(dist.get(source) ?? 99, dist.get(target) ?? 99);
-        const edgeColor = d <= 1 ? "rgba(86,211,100,0.55)" : d <= 3 ? "rgba(227,179,65,0.45)" : d <= 6 ? "rgba(210,153,34,0.35)" : "rgba(255,123,114,0.22)";
-        graph.setEdgeAttribute(edgeId, "color", edgeColor);
-      });
-      requestAnimationFrame(() => {
-        setGraphVersion((v) => v + 1);
-        sceneRef.current?.getRuntime()?.requestRender();
+  useEffect(() => {
+    if (distanceMode !== "semantic" || !distanceAnchorNodeId) {
+      setSemanticDistanceState({
+        anchorNodeId: distanceAnchorNodeId || null,
+        scores: EMPTY_DISTANCE_RECORD,
+        count: 0,
+        status: distanceMode === "semantic" ? "unavailable" : "idle",
+        error: distanceMode === "semantic" ? "Select a Full Graph node to load semantic distance." : null,
       });
       return;
     }
 
-    // Semantic mode — fetch neighborhood and color edges by similarity score
-    const fetchSemantic = async () => {
+    let cancelled = false;
+    setSemanticDistanceState({
+      anchorNodeId: distanceAnchorNodeId,
+      scores: EMPTY_DISTANCE_RECORD,
+      count: 0,
+      status: "loading",
+      error: null,
+    });
+
+    const loadSemanticNeighborhood = async () => {
       try {
         const response = await fetch(
-          `/api/graph/node/${encodeURIComponent(selectedNodeId)}/semantic-neighborhood?top_k=50`,
+          `/api/graph/node/${encodeURIComponent(distanceAnchorNodeId)}/semantic-neighborhood?top_k=50`,
         );
-        if (!response.ok) return;
-        const data: { anchor_node: string; neighbors: { id: string; type: string; content: string; similarity: number; hop_distance?: number | null }[]; total: number } = await response.json();
-        const simMap = new Map(data.neighbors.map((n) => [n.id, n.similarity]));
+        if (cancelled) {
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(response.status === 503
+            ? "Semantic similarity is unavailable for this graph."
+            : `Semantic distance failed with status ${response.status}`);
+        }
 
-        graph.forEachEdge((edgeId, _attrs, source, target) => {
-          const sim = simMap.get(source === selectedNodeId ? target : source);
-          if (sim == null) {
-            graph.setEdgeAttribute(edgeId, "color", "rgba(100,120,140,0.18)");
-            return;
+        const data: SemanticNeighborhoodResponse = await response.json();
+        const scores = data.neighbors.reduce<Record<string, number>>((nextScores, neighbor) => {
+          if (Number.isFinite(neighbor.similarity)) {
+            nextScores[neighbor.id] = neighbor.similarity;
           }
-          const edgeColor =
-            sim > 0.7 ? `rgba(86,211,100,${0.3 + sim * 0.4})` :
-            sim > 0.4 ? `rgba(227,179,65,${0.25 + sim * 0.35})` :
-                        `rgba(255,123,114,${0.2 + sim * 0.3})`;
-          graph.setEdgeAttribute(edgeId, "color", edgeColor);
-        });
+          return nextScores;
+        }, {});
 
-        requestAnimationFrame(() => {
-          setGraphVersion((v) => v + 1);
-          sceneRef.current?.getRuntime()?.requestRender();
+        setSemanticDistanceState({
+          anchorNodeId: distanceAnchorNodeId,
+          scores,
+          count: Object.keys(scores).length,
+          status: Object.keys(scores).length > 0 ? "ready" : "unavailable",
+          error: Object.keys(scores).length > 0 ? null : "No semantic neighbors were returned for this node.",
         });
-      } catch {
-        // semantic mode falls back to no coloring on fetch error
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setSemanticDistanceState({
+          anchorNodeId: distanceAnchorNodeId,
+          scores: EMPTY_DISTANCE_RECORD,
+          count: 0,
+          status: "error",
+          error: error instanceof Error ? error.message : "Semantic distance could not be loaded.",
+        });
       }
     };
 
-    void fetchSemantic();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [distanceMode, selectedNodeId]);
+    void loadSemanticNeighborhood();
+    return () => {
+      cancelled = true;
+    };
+  }, [distanceAnchorNodeId, distanceMode]);
+
+  const distanceVisualState = useMemo<GraphDistanceVisualState>(() => {
+    if (activeDistanceMode === "off") {
+      return {
+        mode: "off",
+        anchorNodeId: null,
+        anchorLabel: null,
+        maxHops: distanceMaxHops,
+        structuralDistances: EMPTY_DISTANCE_RECORD,
+        semanticScores: EMPTY_DISTANCE_RECORD,
+        distanceCounts: undefined,
+        outsideCount: 0,
+        heatmapVisibleNodeIds: undefined,
+        heatmapRingCounts: undefined,
+        heatmapRenderedRingCounts: undefined,
+        heatmapSaturationMode: undefined,
+        semanticNeighborCount: 0,
+        status: "idle",
+        error: null,
+      };
+    }
+
+    if (viewMode !== "full") {
+      return {
+        mode: activeDistanceMode,
+        anchorNodeId: null,
+        anchorLabel: null,
+        maxHops: distanceMaxHops,
+        structuralDistances: EMPTY_DISTANCE_RECORD,
+        semanticScores: EMPTY_DISTANCE_RECORD,
+        distanceCounts: undefined,
+        outsideCount: graph.order,
+        heatmapVisibleNodeIds: undefined,
+        heatmapRingCounts: undefined,
+        heatmapRenderedRingCounts: undefined,
+        heatmapSaturationMode: undefined,
+        semanticNeighborCount: 0,
+        status: "unavailable",
+        error: "Distance intelligence is available in Full Graph mode.",
+      };
+    }
+
+    if (!distanceAnchorNodeId) {
+      return {
+        mode: activeDistanceMode,
+        anchorNodeId: null,
+        anchorLabel: null,
+        maxHops: distanceMaxHops,
+        structuralDistances: EMPTY_DISTANCE_RECORD,
+        semanticScores: EMPTY_DISTANCE_RECORD,
+        distanceCounts: undefined,
+        outsideCount: graph.order,
+        heatmapVisibleNodeIds: undefined,
+        heatmapRingCounts: undefined,
+        heatmapRenderedRingCounts: undefined,
+        heatmapSaturationMode: undefined,
+        semanticNeighborCount: 0,
+        status: "unavailable",
+        error: "Select a node to activate distance intelligence.",
+      };
+    }
+
+    if (activeDistanceMode === "semantic") {
+      return {
+        mode: "semantic",
+        anchorNodeId: distanceAnchorNodeId,
+        anchorLabel: distanceAnchorLabel,
+        maxHops: distanceMaxHops,
+        structuralDistances,
+        semanticScores: semanticDistanceState.anchorNodeId === distanceAnchorNodeId
+          ? semanticDistanceState.scores
+          : EMPTY_DISTANCE_RECORD,
+        distanceCounts,
+        outsideCount: distanceCounts.outside,
+        heatmapVisibleNodeIds: undefined,
+        heatmapRingCounts: undefined,
+        heatmapRenderedRingCounts: undefined,
+        heatmapSaturationMode: undefined,
+        semanticNeighborCount: semanticDistanceState.anchorNodeId === distanceAnchorNodeId
+          ? semanticDistanceState.count
+          : 0,
+        status: semanticDistanceState.anchorNodeId === distanceAnchorNodeId
+          ? semanticDistanceState.status
+          : "loading",
+        error: semanticDistanceState.anchorNodeId === distanceAnchorNodeId
+          ? semanticDistanceState.error
+          : null,
+      };
+    }
+
+    return {
+      mode: activeDistanceMode,
+      anchorNodeId: distanceAnchorNodeId,
+      anchorLabel: distanceAnchorLabel,
+      maxHops: distanceMaxHops,
+      structuralDistances,
+      semanticScores: EMPTY_DISTANCE_RECORD,
+      distanceCounts,
+      outsideCount: distanceCounts.outside,
+      heatmapVisibleNodeIds: heatmapRenderSnapshot?.visibleNodeIds,
+      heatmapRingCounts: heatmapRenderSnapshot?.ringCounts,
+      heatmapRenderedRingCounts: heatmapRenderSnapshot?.renderedRingCounts,
+      heatmapSaturationMode: heatmapRenderSnapshot?.saturationMode,
+      semanticNeighborCount: 0,
+      status: "ready",
+      error: null,
+    };
+  }, [
+    activeDistanceMode,
+    distanceAnchorLabel,
+    distanceAnchorNodeId,
+    distanceCounts,
+    distanceMaxHops,
+    graph.order,
+    heatmapRenderSnapshot,
+    semanticDistanceState,
+    structuralDistances,
+    viewMode,
+  ]);
 
   const showLoadingOverlay = !graphReady && (isLoading || isFetching || Boolean(loadingProgress));
   const showSettlingStatus = graphReady && loadingProgress?.phase === "stabilizing_layout";
@@ -2036,6 +2156,7 @@ export function GraphWorkspace() {
         .map(([panelId]) => panelId),
       effectsState,
       edgeClasses: graphDiagnosticsState.edgeClasses,
+      distanceVisual: graphDiagnosticsState.distanceVisual,
       effectAvailability: graphDiagnosticsState.effectAvailability,
     };
   }, [activePlugins, effectsState, graphDiagnosticsState, pluginPanelState]);
@@ -2331,7 +2452,7 @@ export function GraphWorkspace() {
   const searchDisabled = showLoadingOverlay || !searchQuery.trim();
 
   const distanceToolbarItems = useMemo<GraphToolbarItem[]>(() => {
-    if (!hasGraphContent || !selectedNodeId) {
+    if (!hasGraphContent || viewMode !== "full" || !selectedNodeId || !graph.hasNode(selectedNodeId)) {
       return [];
     }
 
@@ -2345,7 +2466,8 @@ export function GraphWorkspace() {
         active: egoModeEnabled,
         onClick: () => {
           setEgoModeEnabled((v) => !v);
-          if (heatmapEnabled) setHeatmapEnabled(false);
+          setHeatmapEnabled(false);
+          setDistanceMode("off");
         },
       },
       {
@@ -2357,7 +2479,8 @@ export function GraphWorkspace() {
         active: heatmapEnabled,
         onClick: () => {
           setHeatmapEnabled((v) => !v);
-          if (egoModeEnabled) setEgoModeEnabled(false);
+          setEgoModeEnabled(false);
+          setDistanceMode("off");
         },
       },
       {
@@ -2365,17 +2488,25 @@ export function GraphWorkspace() {
         label: "Structural",
         title: "Color edges by structural (hop) distance",
         active: distanceMode === "structural",
-        onClick: () => setDistanceMode((m) => (m === "structural" ? "off" : "structural")),
+        onClick: () => {
+          setEgoModeEnabled(false);
+          setHeatmapEnabled(false);
+          setDistanceMode((m) => (m === "structural" ? "off" : "structural"));
+        },
       },
       {
         id: "dist-semantic",
         label: "Semantic",
         title: "Color edges by semantic similarity to selected node",
         active: distanceMode === "semantic",
-        onClick: () => setDistanceMode((m) => (m === "semantic" ? "off" : "semantic")),
+        onClick: () => {
+          setEgoModeEnabled(false);
+          setHeatmapEnabled(false);
+          setDistanceMode((m) => (m === "semantic" ? "off" : "semantic"));
+        },
       },
     ];
-  }, [distanceMode, egoMaxHops, egoModeEnabled, hasGraphContent, heatmapEnabled, selectedNodeId]);
+  }, [distanceMode, egoMaxHops, egoModeEnabled, hasGraphContent, heatmapEnabled, selectedNodeId, viewMode]);
 
   const toolbarClusters = useMemo<GraphToolbarGroup[]>(() => [
     {
@@ -2430,6 +2561,7 @@ export function GraphWorkspace() {
     selectedEdgeId,
     activePath,
     activePathEdgeIds,
+    distanceVisualState,
     effectsState,
     temporalState,
     isLayoutRunning,
@@ -2442,6 +2574,48 @@ export function GraphWorkspace() {
     onDiagnosticsChange: handleDiagnosticsChange,
     onAnalyticsChange: handleAnalyticsChange,
   } as const;
+  const showDistanceStatus = distanceVisualState.mode !== "off";
+  const distanceReachableCount = Object.keys(distanceVisualState.structuralDistances).length;
+  const visibleDistanceCounts = distanceVisualState.distanceCounts;
+  const renderedHeatmapCounts = distanceVisualState.heatmapRenderedRingCounts;
+  const formatRenderedCount = (truth: number, rendered: number | undefined) => {
+    if (rendered == null || rendered >= truth) {
+      return truth.toLocaleString();
+    }
+    return `${truth.toLocaleString()} (${rendered.toLocaleString()} shown)`;
+  };
+  const heatmapDistanceSummary = visibleDistanceCounts
+    ? [
+      `${visibleDistanceCounts.anchor.toLocaleString()} anchor`,
+      `${formatRenderedCount(visibleDistanceCounts.oneHop, renderedHeatmapCounts?.oneHop)} 1-hop`,
+      `${formatRenderedCount(visibleDistanceCounts.twoHop, renderedHeatmapCounts?.twoHop)} 2-hop`,
+      `${formatRenderedCount(visibleDistanceCounts.threeHopPlus, renderedHeatmapCounts?.threeHopPlus)} 3+ hop`,
+      `${visibleDistanceCounts.outside.toLocaleString()} outside`,
+      distanceVisualState.heatmapSaturationMode === "sampled" ? "Sampled for readability" : "",
+    ].filter(Boolean).join(" · ")
+    : `${distanceReachableCount.toLocaleString()} nodes within ${distanceVisualState.maxHops} hops`;
+  const heatmapRenderedSummary = distanceVisualState.mode === "heatmap" && renderedHeatmapCounts
+    ? [
+      `${renderedHeatmapCounts.anchor.toLocaleString()} anchor shown`,
+      `${renderedHeatmapCounts.oneHop.toLocaleString()} 1-hop shown`,
+      `${renderedHeatmapCounts.twoHop.toLocaleString()} 2-hop shown`,
+      `${renderedHeatmapCounts.threeHopPlus.toLocaleString()} 3+ hop shown`,
+    ].join(" · ")
+    : null;
+  const distanceLegendItems = distanceVisualState.mode === "heatmap"
+    ? [
+      { label: "Anchor", color: getDistanceBandColor(0) },
+      { label: "1", color: getDistanceBandColor(1) },
+      { label: "2", color: getDistanceBandColor(2) },
+      { label: "3", color: getDistanceBandColor(3) },
+      { label: "Outside", color: withAlpha(GRAPH_THEME.palette.overview.nodeMuted, 0.38) },
+    ]
+    : [
+      { label: "0h", color: getDistanceBandColor(0) },
+      { label: "1h", color: getDistanceBandColor(1) },
+      { label: "2-3h", color: getDistanceBandColor(3) },
+      { label: "4-6h", color: getDistanceBandColor(6) },
+    ];
 
   return (
     <div className="palantir-bg" style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
@@ -2503,6 +2677,46 @@ export function GraphWorkspace() {
                   <span style={{ fontFamily: "monospace", color: "#e6f2ff" }}>{egoMaxHops} hop{egoMaxHops !== 1 ? "s" : ""}</span>
                 </div>
               )}
+
+              {showDistanceStatus ? (
+                <div style={distanceStatusStripStyle}>
+                  <div style={distanceStatusTitleStyle}>
+                    <Activity size={14} aria-hidden />
+                    <span>Distance Intelligence</span>
+                    <span style={distanceModeBadgeStyle}>{distanceVisualState.mode}</span>
+                  </div>
+                  <div style={distanceStatusMetaStyle}>
+                    {distanceVisualState.anchorLabel ? (
+                      <span>Anchor: <strong>{distanceVisualState.anchorLabel}</strong></span>
+                    ) : null}
+                    {distanceVisualState.mode === "semantic" ? (
+                      <span>
+                        {distanceVisualState.status === "loading"
+                          ? "Loading semantic neighborhood..."
+                          : `${distanceVisualState.semanticNeighborCount ?? 0} semantic neighbors`}
+                      </span>
+                    ) : distanceVisualState.mode === "heatmap" ? (
+                      <span>{heatmapDistanceSummary}</span>
+                    ) : (
+                      <span>{distanceReachableCount.toLocaleString()} nodes within {distanceVisualState.maxHops} hops</span>
+                    )}
+                    {distanceVisualState.status === "unavailable" || distanceVisualState.status === "error" ? (
+                      <span style={{ color: GRAPH_THEME.ui.control.dangerText }}>{distanceVisualState.error}</span>
+                    ) : null}
+                    {heatmapRenderedSummary ? (
+                      <span style={{ color: GRAPH_THEME.ui.text.muted }}>{heatmapRenderedSummary}</span>
+                    ) : null}
+                  </div>
+                  <div style={distanceLegendStyle}>
+                    {distanceLegendItems.map((item) => (
+                      <span key={item.label} style={distanceLegendItemStyle}>
+                        <span style={{ ...distanceLegendSwatchStyle, background: item.color }} />
+                        {item.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {searchError ? <div style={{ color: "#ff7b72", fontSize: 12 }}>{searchError}</div> : null}
 
@@ -2746,6 +2960,68 @@ const selectedEdgeNodeChipStyle: React.CSSProperties = {
   minHeight: 32,
   padding: "7px 12px",
   whiteSpace: "nowrap",
+};
+
+const distanceStatusStripStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+  border: `1px solid ${GRAPH_THEME.ui.control.activeBorder}`,
+  background: "linear-gradient(135deg, rgba(98, 226, 205, 0.09), rgba(227, 179, 65, 0.045))",
+  borderRadius: 16,
+  padding: "9px 12px",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.045)",
+};
+
+const distanceStatusTitleStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 7,
+  color: GRAPH_THEME.ui.text.strong,
+  fontSize: 12,
+  fontWeight: 800,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+};
+
+const distanceModeBadgeStyle: React.CSSProperties = {
+  padding: "2px 7px",
+  borderRadius: 999,
+  border: `1px solid ${GRAPH_THEME.ui.surface.panelBorder}`,
+  color: GRAPH_THEME.palette.accent.path,
+  background: "rgba(215, 144, 86, 0.1)",
+  fontSize: 10,
+};
+
+const distanceStatusMetaStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+  color: GRAPH_THEME.ui.text.body,
+  fontSize: 12,
+};
+
+const distanceLegendStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  marginLeft: "auto",
+  color: GRAPH_THEME.ui.text.muted,
+  fontSize: 11,
+};
+
+const distanceLegendItemStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+};
+
+const distanceLegendSwatchStyle: React.CSSProperties = {
+  width: 8,
+  height: 8,
+  borderRadius: 999,
 };
 
 const selectedEdgePropertyGridStyle: React.CSSProperties = {

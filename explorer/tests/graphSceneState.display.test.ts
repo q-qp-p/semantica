@@ -12,21 +12,26 @@ import {
   computeGraphAnalyticsBase,
 } from "../src/workspaces/GraphWorkspace/graphAnalytics.ts";
 import {
+  buildHeatmapRenderSnapshot,
+  buildStructuralDistanceSnapshot,
   classifyFullGraphEdge,
   checkGroupedViewAvailability,
   mapFullEdgeClassToVisualState,
+  resolveDistanceEdgeStyle,
+  resolveDistanceNodeStyle,
   resolveEdgeElementStyle,
   resolveEdgeVisualState,
   resolveDisplayGraph,
   resolveGroupedDisplayNodeId,
   resolveGroupedDisplayStateSnapshot,
+  summarizeDistanceBuckets,
 } from "../src/workspaces/GraphWorkspace/graphSceneState.ts";
 import {
   buildGraphStructureCurveCache,
   evaluateGraphStructureLayerGate,
 } from "../src/workspaces/GraphWorkspace/graphStructureLayer.ts";
 import { GRAPH_THEME } from "../src/workspaces/GraphWorkspace/graphTheme.ts";
-import type { GraphFullEdgeClass, GraphFullEdgeClassCounts } from "../src/workspaces/GraphWorkspace/types.ts";
+import type { GraphDistanceVisualState, GraphFullEdgeClass, GraphFullEdgeClassCounts } from "../src/workspaces/GraphWorkspace/types.ts";
 
 function addNode(id: string, semanticGroup = "entity") {
   batchMergeNodes([
@@ -73,6 +78,281 @@ test.beforeEach(() => {
 
 test.after(() => {
   clearGraph();
+});
+
+const BASE_NODE_STYLE = {
+  color: "#63E6FF",
+  shellColor: "#63E6FF",
+  coreScale: 1,
+  size: 8,
+  forceLabel: false,
+  label: "node",
+  zIndex: 1,
+  hidden: false,
+  borderColor: "#63E6FF",
+  borderSize: 1,
+  nodeVariant: "default",
+  entityShape: "entity",
+  entityShapeKind: 0,
+  entityAspectRatio: 1,
+  showBadge: false,
+  showRing: false,
+  ringSize: 0,
+  showHalo: false,
+  haloColor: "transparent",
+} as const;
+
+const BASE_EDGE_STYLE = {
+  hidden: true,
+  color: "#334155",
+  size: 0.5,
+  zIndex: 0,
+  edgeVariant: "line",
+  arrowVisibilityPolicy: "hidden",
+  curveStrength: 0,
+  curvature: 0,
+} as const;
+
+function makeDistanceState(overrides: Partial<GraphDistanceVisualState>): GraphDistanceVisualState {
+  return {
+    mode: "off",
+    anchorNodeId: null,
+    anchorLabel: null,
+    maxHops: 2,
+    structuralDistances: {},
+    semanticScores: {},
+    semanticNeighborCount: 0,
+    status: "ready",
+    error: null,
+    ...overrides,
+  };
+}
+
+test("buildStructuralDistanceSnapshot returns bounded BFS hop distances", () => {
+  addNode("anchor");
+  addNode("near");
+  addNode("far");
+  addNode("outside");
+  addNode("too-far");
+  addEdge("e-anchor-near", "anchor", "near");
+  addEdge("e-near-far", "near", "far");
+  addEdge("e-far-outside", "far", "outside");
+  addEdge("e-outside-too-far", "outside", "too-far");
+
+  const distances = buildStructuralDistanceSnapshot(graph, "anchor", 3);
+
+  assert.equal(distances.anchor, 0);
+  assert.equal(distances.near, 1);
+  assert.equal(distances.far, 2);
+  assert.equal(distances.outside, 3);
+  assert.equal(distances["too-far"], undefined);
+});
+
+test("summarizeDistanceBuckets reports local rings and outside count", () => {
+  const counts = summarizeDistanceBuckets({
+    anchor: 0,
+    one: 1,
+    two: 2,
+    three: 3,
+  }, 6);
+
+  assert.deepEqual(counts, {
+    anchor: 1,
+    oneHop: 1,
+    twoHop: 1,
+    threeHop: 1,
+    outside: 2,
+  });
+});
+
+test("buildHeatmapRenderSnapshot caps and deterministically samples large rings", () => {
+  addNode("anchor");
+  for (let index = 0; index < 130; index += 1) {
+    const nodeId = `one-${index}`;
+    addNode(nodeId);
+    graph.mergeNodeAttributes(nodeId, { visualPriority: index % 7, labelPriority: index % 5 });
+    addEdge(`edge-anchor-${nodeId}`, "anchor", nodeId, index % 11);
+  }
+  for (let index = 0; index < 700; index += 1) {
+    const nodeId = `two-${index}`;
+    addNode(nodeId);
+    graph.mergeNodeAttributes(nodeId, { visualPriority: index % 13, labelPriority: index % 3 });
+    addEdge(`edge-one-two-${index}`, `one-${index % 130}`, nodeId, index % 17);
+  }
+  for (let index = 0; index < 950; index += 1) {
+    const nodeId = `three-${index}`;
+    addNode(nodeId);
+    graph.mergeNodeAttributes(nodeId, { visualPriority: index % 19, labelPriority: index % 4 });
+    addEdge(`edge-two-three-${index}`, `two-${index % 700}`, nodeId, index % 23);
+  }
+
+  const distances = buildStructuralDistanceSnapshot(graph, "anchor", 3);
+  const firstSnapshot = buildHeatmapRenderSnapshot(graph, "anchor", distances, 3);
+  const secondSnapshot = buildHeatmapRenderSnapshot(graph, "anchor", distances, 3);
+
+  assert.equal(firstSnapshot.ringCounts.anchor, 1);
+  assert.equal(firstSnapshot.ringCounts.oneHop, 130);
+  assert.equal(firstSnapshot.ringCounts.twoHop, 700);
+  assert.equal(firstSnapshot.ringCounts.threeHop, 950);
+  assert.equal(firstSnapshot.renderedRingCounts.anchor, 1);
+  assert.equal(firstSnapshot.renderedRingCounts.oneHop, 120);
+  assert.equal(firstSnapshot.renderedRingCounts.twoHop, 650);
+  assert.equal(firstSnapshot.renderedRingCounts.threeHop, 900);
+  assert.equal(firstSnapshot.saturationMode, "sampled");
+  assert.deepEqual(firstSnapshot.visibleNodeIds, secondSnapshot.visibleNodeIds);
+  assert.ok(firstSnapshot.visibleNodeIds.includes("anchor"));
+});
+
+test("resolveDistanceNodeStyle applies ego muting without mutating graph data", () => {
+  const state = makeDistanceState({
+    mode: "ego",
+    anchorNodeId: "anchor",
+    anchorLabel: "Anchor",
+    maxHops: 2,
+    structuralDistances: { anchor: 0, near: 1 },
+  });
+
+  const anchorStyle = resolveDistanceNodeStyle(GRAPH_THEME, "inspection", BASE_NODE_STYLE, state, "anchor");
+  const outsideStyle = resolveDistanceNodeStyle(GRAPH_THEME, "inspection", BASE_NODE_STYLE, state, "outside");
+
+  assert.equal(anchorStyle.forceLabel, true);
+  assert.equal(anchorStyle.label, "Anchor");
+  assert.ok(Number(anchorStyle.size) > BASE_NODE_STYLE.size);
+  assert.equal(outsideStyle.label, "");
+  assert.ok(Number(outsideStyle.size) < BASE_NODE_STYLE.size);
+});
+
+test("resolveDistanceNodeStyle applies readable heatmap rings only when ready", () => {
+  const readyState = makeDistanceState({
+    mode: "heatmap",
+    anchorNodeId: "anchor",
+    maxHops: 3,
+    structuralDistances: { anchor: 0, one: 1, two: 2, three: 3 },
+    heatmapVisibleNodeIds: ["anchor", "one", "two", "three"],
+    distanceCounts: {
+      anchor: 1,
+      oneHop: 1,
+      twoHop: 1,
+      threeHop: 1,
+      outside: 1,
+    },
+  });
+  const loadingState = makeDistanceState({ ...readyState, status: "loading" });
+
+  const anchorStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, readyState, "anchor");
+  const oneHopStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, readyState, "one");
+  const twoHopStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, readyState, "two");
+  const threeHopStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, readyState, "three");
+  const outsideStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, readyState, "outside");
+  const loadingStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, loadingState, "near");
+
+  assert.notEqual(anchorStyle.color, oneHopStyle.color);
+  assert.notEqual(oneHopStyle.color, twoHopStyle.color);
+  assert.notEqual(twoHopStyle.color, threeHopStyle.color);
+  assert.ok(Number(anchorStyle.size) > Number(oneHopStyle.size));
+  assert.ok(Number(oneHopStyle.size) > Number(twoHopStyle.size));
+  assert.ok(Number(twoHopStyle.size) > Number(threeHopStyle.size));
+  assert.equal(outsideStyle.label, "");
+  assert.ok(Number(outsideStyle.size) < BASE_NODE_STYLE.size);
+  assert.deepEqual(loadingStyle, {});
+});
+
+test("resolveDistanceNodeStyle compresses saturated heatmap far rings", () => {
+  const saturatedState = makeDistanceState({
+    mode: "heatmap",
+    anchorNodeId: "anchor",
+    maxHops: 3,
+    structuralDistances: { anchor: 0, one: 1, two: 2, three: 3 },
+    heatmapVisibleNodeIds: ["anchor", "one", "two", "three"],
+    distanceCounts: {
+      anchor: 1,
+      oneHop: 32,
+      twoHop: 3350,
+      threeHop: 7412,
+      outside: 3280,
+    },
+  });
+
+  const oneHopStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, saturatedState, "one");
+  const twoHopStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, saturatedState, "two");
+  const threeHopStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, saturatedState, "three");
+  const outsideStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, saturatedState, "outside");
+
+  assert.ok(Number(oneHopStyle.size) > Number(twoHopStyle.size));
+  assert.ok(Number(twoHopStyle.size) > Number(threeHopStyle.size));
+  assert.ok(Number(threeHopStyle.size) > Number(outsideStyle.size));
+  assert.equal(threeHopStyle.label, "");
+});
+
+test("resolveDistanceNodeStyle mutes unsampled heatmap nodes instead of coloring them", () => {
+  const sampledState = makeDistanceState({
+    mode: "heatmap",
+    anchorNodeId: "anchor",
+    maxHops: 3,
+    structuralDistances: { anchor: 0, rendered: 2, unsampled: 2 },
+    heatmapVisibleNodeIds: ["anchor", "rendered"],
+    distanceCounts: {
+      anchor: 1,
+      oneHop: 0,
+      twoHop: 2,
+      threeHop: 0,
+      outside: 0,
+    },
+    heatmapRenderedRingCounts: {
+      anchor: 1,
+      oneHop: 0,
+      twoHop: 1,
+      threeHop: 0,
+      outside: 0,
+    },
+    heatmapSaturationMode: "sampled",
+  });
+
+  const renderedStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, sampledState, "rendered");
+  const unsampledStyle = resolveDistanceNodeStyle(GRAPH_THEME, "overview", BASE_NODE_STYLE, sampledState, "unsampled");
+
+  assert.notEqual(renderedStyle.color, unsampledStyle.color);
+  assert.ok(Number(renderedStyle.size) > Number(unsampledStyle.size));
+  assert.equal(unsampledStyle.label, "");
+});
+
+test("resolveDistanceEdgeStyle reveals structural and semantic context edges", () => {
+  const structuralState = makeDistanceState({
+    mode: "structural",
+    anchorNodeId: "anchor",
+    maxHops: 2,
+    structuralDistances: { anchor: 0, near: 1 },
+  });
+  const semanticState = makeDistanceState({
+    mode: "semantic",
+    anchorNodeId: "anchor",
+    semanticScores: { semantic: 0.82 },
+  });
+
+  const structuralStyle = resolveDistanceEdgeStyle(BASE_EDGE_STYLE, structuralState, "anchor", "near");
+  const semanticStyle = resolveDistanceEdgeStyle(BASE_EDGE_STYLE, semanticState, "anchor", "semantic");
+  const unrelatedStyle = resolveDistanceEdgeStyle(BASE_EDGE_STYLE, semanticState, "near", "semantic");
+
+  assert.equal(structuralStyle.hidden, false);
+  assert.equal(semanticStyle.hidden, false);
+  assert.deepEqual(unrelatedStyle, {});
+});
+
+test("resolveDistanceEdgeStyle suppresses heatmap background edges but preserves context", () => {
+  const heatmapState = makeDistanceState({
+    mode: "heatmap",
+    anchorNodeId: "anchor",
+    maxHops: 3,
+    structuralDistances: { anchor: 0, one: 1 },
+  });
+
+  const backgroundStyle = resolveDistanceEdgeStyle(BASE_EDGE_STYLE, heatmapState, "anchor", "one", "backbone");
+  const contextStyle = resolveDistanceEdgeStyle(BASE_EDGE_STYLE, heatmapState, "anchor", "one", "local-context");
+  const pathStyle = resolveDistanceEdgeStyle(BASE_EDGE_STYLE, heatmapState, "anchor", "one", "path");
+
+  assert.equal(backgroundStyle.hidden, true);
+  assert.deepEqual(contextStyle, {});
+  assert.deepEqual(pathStyle, {});
 });
 
 test("resolveEdgeVisualState caps selected-node incident edge promotion", () => {

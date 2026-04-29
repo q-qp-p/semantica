@@ -5,6 +5,7 @@ import { graph, type EdgeAttributes, type NodeAttributes } from "../../store/gra
 import type {
   GraphAnalyticsSnapshot,
   GraphCameraState,
+  GraphDistanceVisualState,
   GraphDisplayMeta,
   GraphDisplayStateSnapshot,
   GraphEffectsState,
@@ -51,6 +52,7 @@ export interface GraphSceneProps extends GraphSceneEventMap {
   selectedEdgeId: string;
   activePath?: string[];
   activePathEdgeIds?: string[];
+  distanceVisualState?: GraphDistanceVisualState;
   effectsState: GraphEffectsState;
   temporalState?: GraphTemporalState | null;
   isLayoutRunning: boolean;

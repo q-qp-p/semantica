@@ -14,6 +14,43 @@ export type GraphNodeInteractionState = "default" | "hovered" | "selected" | "ne
 export type GraphEdgeInteractionState = "default" | "backbone" | "hovered" | "selected" | "neighbor" | "path" | "inactive" | "muted";
 export type GraphFullEdgeClass = "hidden" | "backbone" | "bridge" | "local-context" | "selected" | "path" | "muted";
 export type GraphSelectedNodeKind = "none" | "base" | "grouped" | "unavailable";
+export type GraphDistanceVisualMode = "off" | "ego" | "heatmap" | "structural" | "semantic";
+export type GraphDistanceVisualStatus = "idle" | "loading" | "ready" | "unavailable" | "error";
+
+export interface GraphDistanceBucketCounts {
+  anchor: number;
+  oneHop: number;
+  twoHop: number;
+  threeHopPlus: number;
+  outside: number;
+}
+
+export type GraphHeatmapSaturationMode = "normal" | "sampled";
+
+export interface GraphHeatmapRenderSnapshot {
+  visibleNodeIds: string[];
+  ringCounts: GraphDistanceBucketCounts;
+  renderedRingCounts: GraphDistanceBucketCounts;
+  saturationMode: GraphHeatmapSaturationMode;
+}
+
+export interface GraphDistanceVisualState {
+  mode: GraphDistanceVisualMode;
+  anchorNodeId: string | null;
+  anchorLabel?: string | null;
+  maxHops: number;
+  structuralDistances: Record<string, number>;
+  semanticScores: Record<string, number>;
+  distanceCounts?: GraphDistanceBucketCounts;
+  outsideCount?: number;
+  heatmapVisibleNodeIds?: string[];
+  heatmapRingCounts?: GraphDistanceBucketCounts;
+  heatmapRenderedRingCounts?: GraphDistanceBucketCounts;
+  heatmapSaturationMode?: GraphHeatmapSaturationMode;
+  semanticNeighborCount?: number;
+  status: GraphDistanceVisualStatus;
+  error?: string | null;
+}
 
 export interface GraphCameraState {
   x: number;
@@ -127,6 +164,7 @@ export interface GraphRuntimeDiagnosticsSnapshot {
   effectAvailability: GraphDiagnosticsSnapshot["effectAvailability"];
   edgeClasses?: GraphFullEdgeClassDiagnostics;
   structureLayer?: GraphStructureLayerDiagnostics;
+  distanceVisual?: GraphDistanceVisualState;
 }
 
 export interface GraphDiagnosticsSnapshot {
@@ -136,6 +174,7 @@ export interface GraphDiagnosticsSnapshot {
   effectsState: GraphEffectsState;
   edgeClasses?: GraphFullEdgeClassDiagnostics;
   structureLayer?: GraphStructureLayerDiagnostics;
+  distanceVisual?: GraphDistanceVisualState;
   effectAvailability: {
     pathPulse: GraphEffectAvailability;
     pathFlow: GraphEffectAvailability;

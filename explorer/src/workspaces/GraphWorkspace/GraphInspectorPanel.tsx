@@ -63,15 +63,12 @@ const BAND_COLORS: Record<string, string> = {
 };
 
 function PathDistanceIntelPanel({ result }: { result: PathResponse }) {
+  const bandColor = BAND_COLORS[result.distance_band] ?? "#8b949e";
   const hasMetrics =
     result.confidence_decay != null ||
     result.semantic_similarity != null ||
     result.path_coherence_score != null ||
-    result.bottleneck_node ||
-    result.interpretation;
-  if (!hasMetrics) return null;
-
-  const bandColor = BAND_COLORS[result.distance_band] ?? "#8b949e";
+    result.bottleneck_node != null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
@@ -96,7 +93,7 @@ function PathDistanceIntelPanel({ result }: { result: PathResponse }) {
       </div>
 
       {/* metric grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      {hasMetrics && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {result.confidence_decay != null && (
           <div style={metricCardStyle}>
             <div style={metricLabelStyle}>Confidence Decay</div>
@@ -157,7 +154,7 @@ function PathDistanceIntelPanel({ result }: { result: PathResponse }) {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* interpretation */}
       {result.interpretation && (

@@ -29,6 +29,8 @@ import {
   mapFullEdgeClassToVisualState,
   resolveEdgeElementStyle,
   resolveEdgeVisualState,
+  resolveDistanceEdgeStyle,
+  resolveDistanceNodeStyle,
   resolveNodeElementStyle,
   resolveNodeVisualState,
 } from "./graphSceneState";
@@ -61,6 +63,7 @@ import {
 import type {
   GraphAnalyticsSnapshot,
   GraphCameraState,
+  GraphDistanceVisualState,
   GraphDisplayMeta,
   GraphDisplayStateSnapshot,
   GraphDiagnosticsSnapshot,
@@ -101,6 +104,7 @@ export interface GraphCanvasProps {
   selectedEdgeId: string;
   activePath?: string[];
   activePathEdgeIds?: string[];
+  distanceVisualState?: GraphDistanceVisualState;
   effectsState: GraphEffectsState;
   temporalState?: GraphTemporalState | null;
   isLayoutRunning: boolean;
@@ -829,6 +833,7 @@ type ReducerSceneState = {
   pathEdgeIds: Set<string>;
   highlightedIncidentEdgeIds: Set<string>;
   overviewBackboneEdgeIds: Set<string>;
+  distanceVisualState?: GraphDistanceVisualState;
 };
 
 const FULL_EDGE_CLASSES: GraphFullEdgeClass[] = [
@@ -952,6 +957,7 @@ function buildReducerSceneState(
   interactionState: GraphInteractionState,
   displayState?: GraphDisplayStateSnapshot,
   analyticsSnapshot?: GraphAnalyticsSnapshot | null,
+  distanceVisualState?: GraphDistanceVisualState,
 ): ReducerSceneState {
   const { viewMode, zoomTier, hoveredNodeId, selectedNodeId, selectedEdgeId, activePath } = interactionState;
   const primaryNodeId = hoveredNodeId || selectedNodeId;
@@ -977,6 +983,7 @@ function buildReducerSceneState(
     pathNodeIds: new Set(activePath),
     pathEdgeIds,
     overviewBackboneEdgeIds: new Set(analyticsSnapshot?.overviewBackbone.edgeIds ?? []),
+    distanceVisualState,
     highlightedIncidentEdgeIds: buildHighlightedIncidentEdgeIds(
       displayGraph,
       interactionState,
@@ -1092,24 +1099,34 @@ function applySceneState(
       data.label,
       cameraRatio,
     );
+    const distanceStyle = currentState.viewMode === "full"
+      ? resolveDistanceNodeStyle(
+        GRAPH_THEME,
+        currentState.zoomTier,
+        style,
+        currentState.distanceVisualState,
+        String(node),
+      )
+      : {};
+    const resolvedStyle = { ...style, ...distanceStyle };
 
       return {
         ...data,
-        color: style.color,
-        shellColor: style.shellColor,
-        coreScale: style.coreScale,
-        size: style.size,
-        forceLabel: style.forceLabel,
-        label: style.label,
-        zIndex: style.zIndex,
-        hidden: style.hidden,
-        borderColor: style.borderColor,
-        borderSize: style.borderSize,
-        ringColor: style.showRing ? style.ringColor : style.borderColor,
-        ringSize: style.ringSize,
-        entityShape: style.entityShape,
-        entityShapeKind: style.entityShapeKind,
-        entityAspectRatio: style.entityAspectRatio,
+        color: resolvedStyle.color,
+        shellColor: resolvedStyle.shellColor,
+        coreScale: resolvedStyle.coreScale,
+        size: resolvedStyle.size,
+        forceLabel: resolvedStyle.forceLabel,
+        label: resolvedStyle.label,
+        zIndex: resolvedStyle.zIndex,
+        hidden: resolvedStyle.hidden,
+        borderColor: resolvedStyle.borderColor,
+        borderSize: resolvedStyle.borderSize,
+        ringColor: resolvedStyle.showRing ? resolvedStyle.ringColor : resolvedStyle.borderColor,
+        ringSize: resolvedStyle.ringSize,
+        entityShape: resolvedStyle.entityShape,
+        entityShapeKind: resolvedStyle.entityShapeKind,
+        entityAspectRatio: resolvedStyle.entityAspectRatio,
       };
     });
 
@@ -1173,15 +1190,25 @@ function applySceneState(
       stableEdgeId,
       fullEdgeClass,
     );
+    const distanceStyle = currentState.viewMode === "full"
+      ? resolveDistanceEdgeStyle(
+        style,
+        currentState.distanceVisualState,
+        String(source),
+        String(target),
+        fullEdgeClass,
+      )
+      : {};
+    const resolvedStyle = { ...style, ...distanceStyle };
 
     return {
       ...data,
-      hidden: style.hidden,
-      type: style.type,
-      color: style.color,
-      size: style.size,
-      zIndex: style.zIndex,
-      curvature: style.curvature,
+      hidden: resolvedStyle.hidden,
+      type: resolvedStyle.type,
+      color: resolvedStyle.color,
+      size: resolvedStyle.size,
+      zIndex: resolvedStyle.zIndex,
+      curvature: resolvedStyle.curvature,
     };
   });
 
@@ -1225,6 +1252,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       selectedEdgeId,
       activePath = [],
       activePathEdgeIds = [],
+      distanceVisualState,
       effectsState,
       temporalState,
       isLayoutRunning,
@@ -1259,6 +1287,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     const graphVersionRef = useRef(graphVersion);
     const selectedNodeIdRef = useRef(selectedNodeId);
     const focusedNodeIdRef = useRef(focusedNodeId);
+    const distanceVisualStateRef = useRef(distanceVisualState);
     const viewModeRef = useRef(viewMode);
     const onNodeClickRef = useRef(onNodeClick);
     const onEdgeClickRef = useRef(onEdgeClick);
@@ -1285,6 +1314,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     graphVersionRef.current = graphVersion;
     selectedNodeIdRef.current = selectedNodeId;
     focusedNodeIdRef.current = focusedNodeId;
+    distanceVisualStateRef.current = distanceVisualState;
     viewModeRef.current = viewMode;
     onNodeClickRef.current = onNodeClick;
     onEdgeClickRef.current = onEdgeClick;
@@ -1331,6 +1361,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     const interactionStateRef = useRef<GraphInteractionState>(interactionState);
     interactionStateRef.current = interactionState;
     const previousInteractionStateRef = useRef<GraphInteractionState | null>(null);
+    const previousDistanceVisualStateRef = useRef<GraphDistanceVisualState | undefined>(undefined);
     useEffect(() => {
       if (!isLayoutRunning) {
         setLayoutSettledEpoch((epoch) => epoch + 1);
@@ -1347,8 +1378,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       [displayGraph, shouldComputeCentrality, shouldComputeCommunities],
     );
     const reducerSceneState = useMemo(
-      () => buildReducerSceneState(displayGraph, interactionState, displayState, analyticsSnapshot),
-      [analyticsSnapshot, displayGraph, displayState, interactionState],
+      () => buildReducerSceneState(displayGraph, interactionState, displayState, analyticsSnapshot, distanceVisualState),
+      [analyticsSnapshot, displayGraph, displayState, distanceVisualState, interactionState],
     );
     const reducerSceneStateRef = useRef<ReducerSceneState>(reducerSceneState);
     reducerSceneStateRef.current = reducerSceneState;
@@ -1975,6 +2006,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       appliedGraphVersionRef.current = graphVersion;
       fittedDisplaySignatureRef.current = null;
       previousInteractionStateRef.current = null;
+      previousDistanceVisualStateRef.current = undefined;
       behaviorContextRef.current = getBehaviorContext(sigma);
       if (runtimeRef.current) {
         runtimeRef.current.displayGraph = displayGraph;
@@ -2094,6 +2126,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         effectAvailability: availability,
         edgeClasses: edgeClassDiagnostics,
         structureLayer: structureLayerDiagnosticsRef.current ?? structureLayerDiagnostics,
+        distanceVisual: distanceVisualStateRef.current,
       });
       if (import.meta.env.DEV && effectsState.diagnosticsEnabled) {
         console.debug("[Edge Truth]", edgeClassDiagnostics);
@@ -2107,10 +2140,12 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       onDiagnosticsChange,
       structureLayerDiagnostics,
       temporalState,
+      distanceVisualState,
     ]);
 
     useEffect(() => {
       previousInteractionStateRef.current = null;
+      previousDistanceVisualStateRef.current = undefined;
     }, [displayGraph]);
 
     useEffect(() => {
@@ -2120,13 +2155,15 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       }
 
       const previousInteractionState = previousInteractionStateRef.current;
-      const refreshTargets = previousInteractionState
+      const distanceVisualStateChanged = previousDistanceVisualStateRef.current !== distanceVisualState;
+      const refreshTargets = !distanceVisualStateChanged && previousInteractionState
         ? collectInteractionRefreshTargets(displayGraph, previousInteractionState, interactionState)
         : undefined;
 
       applySceneState(sigma, reducerSceneStateRef, reducerWarningStateRef, refreshTargets);
       previousInteractionStateRef.current = interactionState;
-    }, [displayGraph, interactionState, reducerSceneStateRef]);
+      previousDistanceVisualStateRef.current = distanceVisualState;
+    }, [displayGraph, distanceVisualState, interactionState, reducerSceneStateRef]);
 
     const drawStructureLayerFrame = useCallback(() => {
       const sigma = sigmaRef.current;

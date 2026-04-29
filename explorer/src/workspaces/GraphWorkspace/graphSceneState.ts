@@ -22,8 +22,11 @@ import {
 import { classifyEntityShape } from "./graphEntityShape";
 import { computeGraphAnalyticsBase } from "./graphAnalytics";
 import type {
+  GraphDistanceBucketCounts,
   GraphDisplayMeta,
   GraphDisplayStateSnapshot,
+  GraphDistanceVisualState,
+  GraphHeatmapRenderSnapshot,
   GraphFullEdgeClass,
   GraphInteractionState,
   GraphSelectedNodeKind,
@@ -39,6 +42,19 @@ const GROUP_SAMPLE_MEMBERS = 8;
 const AGGREGATED_EDGE_PREFIX = "__agg__:";
 const COMMUNITY_NODE_PREFIX = "__community__:";
 const DEBUG_GRAPH_SCENE_STATE = typeof import.meta !== "undefined" && import.meta.env?.DEV === true;
+const HEATMAP_ONE_HOP_CAP = 120;
+const HEATMAP_TWO_HOP_CAP = 650;
+const HEATMAP_THREE_HOP_CAP = 900;
+
+const _heatmapVisibleSetCache = new WeakMap<GraphDistanceVisualState, Set<string>>();
+function getHeatmapVisibleSet(state: GraphDistanceVisualState): Set<string> {
+  let cached = _heatmapVisibleSetCache.get(state);
+  if (!cached) {
+    cached = new Set(state.heatmapVisibleNodeIds ?? []);
+    _heatmapVisibleSetCache.set(state, cached);
+  }
+  return cached;
+}
 
 type GraphRef = typeof graph | Graph<NodeAttributes, EdgeAttributes>;
 
@@ -111,6 +127,404 @@ export type ResolvedEdgeStyle = {
   curveStrength: number;
   curvature: number;
 };
+
+export function getDistanceBandColor(distance: number): string {
+  if (distance <= 0) return "#7CFF9B";
+  if (distance <= 1) return "#56D364";
+  if (distance <= 2) return "#58A6FF";
+  if (distance <= 3) return "#B0883A";
+  if (distance <= 6) return "#B0883A";
+  return "#FF7B72";
+}
+
+function getSemanticScoreColor(score: number): string {
+  if (score >= 0.7) return "#56D364";
+  if (score >= 0.4) return "#E3B341";
+  return "#FF7B72";
+}
+
+export function buildStructuralDistanceSnapshot(
+  graphRef: GraphRef,
+  anchorNodeId: string,
+  maxHops: number,
+): Record<string, number> {
+  const distances: Record<string, number> = {};
+  if (!anchorNodeId || !graphRef.hasNode(anchorNodeId)) {
+    return distances;
+  }
+
+  const queue: Array<[string, number]> = [[anchorNodeId, 0]];
+  const visited = new Set<string>([anchorNodeId]);
+  distances[anchorNodeId] = 0;
+
+  while (queue.length > 0) {
+    const [nodeId, hop] = queue.shift()!;
+    if (hop >= maxHops) {
+      continue;
+    }
+    graphRef.neighbors(nodeId).forEach((neighborId) => {
+      const stableNeighborId = String(neighborId);
+      if (visited.has(stableNeighborId)) {
+        return;
+      }
+      visited.add(stableNeighborId);
+      distances[stableNeighborId] = hop + 1;
+      queue.push([stableNeighborId, hop + 1]);
+    });
+  }
+
+  return distances;
+}
+
+export function summarizeDistanceBuckets(
+  distances: Record<string, number>,
+  totalNodeCount: number,
+): GraphDistanceBucketCounts {
+  const counts: GraphDistanceBucketCounts = {
+    anchor: 0,
+    oneHop: 0,
+    twoHop: 0,
+    threeHopPlus: 0,
+    outside: 0,
+  };
+
+  Object.values(distances).forEach((distance) => {
+    if (distance <= 0) {
+      counts.anchor += 1;
+    } else if (distance === 1) {
+      counts.oneHop += 1;
+    } else if (distance === 2) {
+      counts.twoHop += 1;
+    } else {
+      counts.threeHopPlus += 1;
+    }
+  });
+
+  const reachedCount = counts.anchor + counts.oneHop + counts.twoHop + counts.threeHopPlus;
+  counts.outside = Math.max(0, totalNodeCount - reachedCount);
+  return counts;
+}
+
+function createEmptyDistanceCounts(): GraphDistanceBucketCounts {
+  return {
+    anchor: 0,
+    oneHop: 0,
+    twoHop: 0,
+    threeHopPlus: 0,
+    outside: 0,
+  };
+}
+
+function getHeatmapRingCap(distance: number): number {
+  if (distance <= 0) return Number.POSITIVE_INFINITY;
+  if (distance === 1) return HEATMAP_ONE_HOP_CAP;
+  if (distance === 2) return HEATMAP_TWO_HOP_CAP;
+  return HEATMAP_THREE_HOP_CAP;
+}
+
+function getNodeHeatmapPriority(graphRef: GraphRef, nodeId: string): number {
+  if (!graphRef.hasNode(nodeId)) {
+    return 0;
+  }
+  const attrs = graphRef.getNodeAttributes(nodeId) as NodeAttributes;
+  return Number(attrs.visualPriority ?? 0) * 8 + Number(attrs.labelPriority ?? 0);
+}
+
+function buildPreviousRingEdgeScores(
+  graphRef: GraphRef,
+  distances: Record<string, number>,
+): Map<string, number> {
+  const scores = new Map<string, number>();
+  graphRef.forEachEdge((edgeId, attrs, sourceId, targetId) => {
+    const source = String(sourceId);
+    const target = String(targetId);
+    const sourceDistance = distances[source];
+    const targetDistance = distances[target];
+    if (sourceDistance == null || targetDistance == null || Math.abs(sourceDistance - targetDistance) !== 1) {
+      return;
+    }
+
+    const fartherNodeId = sourceDistance > targetDistance ? source : target;
+    const edgeAttrs = attrs as EdgeAttributes;
+    const score = Number(edgeAttrs.visualPriority ?? 0) * 8
+      + Number(edgeAttrs.weight ?? 0)
+      + Number(edgeAttrs.relationshipStrength ?? 0) * 2
+      + Number(edgeAttrs.representativeWeight ?? 0);
+    scores.set(fartherNodeId, Math.max(scores.get(fartherNodeId) ?? 0, score));
+    void edgeId;
+  });
+  return scores;
+}
+
+export function buildHeatmapRenderSnapshot(
+  graphRef: GraphRef,
+  anchorNodeId: string,
+  distances: Record<string, number>,
+  maxHops: number,
+): GraphHeatmapRenderSnapshot {
+  const ringCounts = summarizeDistanceBuckets(distances, graphRef.order);
+  const renderedRingCounts = createEmptyDistanceCounts();
+  renderedRingCounts.outside = ringCounts.outside;
+  const visibleNodeIds = new Set<string>();
+
+  if (!anchorNodeId || !graphRef.hasNode(anchorNodeId)) {
+    return {
+      visibleNodeIds: [],
+      ringCounts,
+      renderedRingCounts,
+      saturationMode: "normal",
+    };
+  }
+
+  const previousRingEdgeScores = buildPreviousRingEdgeScores(graphRef, distances);
+  const rings = new Map<number, string[]>();
+  Object.entries(distances).forEach(([nodeId, distance]) => {
+    if (distance < 0 || distance > maxHops || distance > 3) {
+      return;
+    }
+    const ring = Math.max(0, Math.floor(distance));
+    rings.set(ring, [...(rings.get(ring) ?? []), nodeId]);
+  });
+
+  if (!rings.get(0)?.includes(anchorNodeId)) {
+    rings.set(0, [anchorNodeId, ...(rings.get(0) ?? [])]);
+  }
+
+  [0, 1, 2, 3].forEach((ring) => {
+    const cap = getHeatmapRingCap(ring);
+    const candidates = [...new Set(rings.get(ring) ?? [])]
+      .sort((left, right) => {
+        const edgeScoreDelta = (previousRingEdgeScores.get(right) ?? 0) - (previousRingEdgeScores.get(left) ?? 0);
+        if (edgeScoreDelta !== 0) return edgeScoreDelta;
+        const nodePriorityDelta = getNodeHeatmapPriority(graphRef, right) - getNodeHeatmapPriority(graphRef, left);
+        if (nodePriorityDelta !== 0) return nodePriorityDelta;
+        return hashString(left) - hashString(right);
+      })
+      .slice(0, cap);
+
+    candidates.forEach((nodeId) => visibleNodeIds.add(nodeId));
+    if (ring === 0) renderedRingCounts.anchor = candidates.length;
+    if (ring === 1) renderedRingCounts.oneHop = candidates.length;
+    if (ring === 2) renderedRingCounts.twoHop = candidates.length;
+    if (ring === 3) renderedRingCounts.threeHopPlus = candidates.length;
+  });
+
+  visibleNodeIds.add(anchorNodeId);
+  renderedRingCounts.anchor = Math.max(1, renderedRingCounts.anchor);
+
+  const isSampled = renderedRingCounts.oneHop < ringCounts.oneHop
+    || renderedRingCounts.twoHop < ringCounts.twoHop
+    || renderedRingCounts.threeHopPlus < ringCounts.threeHopPlus;
+
+  return {
+    visibleNodeIds: [...visibleNodeIds],
+    ringCounts,
+    renderedRingCounts,
+    saturationMode: isSampled ? "sampled" : "normal",
+  };
+}
+
+function isHeatmapSaturated(counts: GraphDistanceBucketCounts | undefined): boolean {
+  if (!counts) {
+    return false;
+  }
+
+  const total = counts.anchor + counts.oneHop + counts.twoHop + counts.threeHopPlus + counts.outside;
+  if (total <= 0) {
+    return false;
+  }
+
+  const broadRings = counts.twoHop + counts.threeHopPlus;
+  return counts.threeHopPlus > 1_500 || broadRings / total > 0.35;
+}
+
+function resolveHeatmapRingStyle(distance: number, isSaturated: boolean) {
+  if (distance <= 0) {
+    return {
+      alpha: 1,
+      shellAlpha: 0.92,
+      borderAlpha: 0.95,
+      sizeMultiplier: 1.28,
+      borderBoost: 1.35,
+      zIndex: 8,
+    };
+  }
+
+  if (distance === 1) {
+    return {
+      alpha: 0.9,
+      shellAlpha: 0.42,
+      borderAlpha: 0.78,
+      sizeMultiplier: 0.96,
+      borderBoost: 0.28,
+      zIndex: 5,
+    };
+  }
+
+  if (distance === 2) {
+    return {
+      alpha: isSaturated ? 0.46 : 0.62,
+      shellAlpha: isSaturated ? 0.1 : 0.2,
+      borderAlpha: isSaturated ? 0.36 : 0.52,
+      sizeMultiplier: isSaturated ? 0.54 : 0.7,
+      borderBoost: isSaturated ? -0.2 : 0.05,
+      zIndex: 2,
+    };
+  }
+
+  return {
+    alpha: isSaturated ? 0.16 : 0.34,
+    shellAlpha: isSaturated ? 0.03 : 0.1,
+    borderAlpha: isSaturated ? 0.16 : 0.32,
+    sizeMultiplier: isSaturated ? 0.3 : 0.48,
+    borderBoost: isSaturated ? -0.35 : -0.08,
+    zIndex: 1,
+  };
+}
+
+export function resolveDistanceNodeStyle(
+  theme: GraphTheme,
+  zoomTier: GraphZoomTier,
+  baseStyle: ResolvedNodeStyle,
+  distanceVisualState: GraphDistanceVisualState | undefined,
+  nodeId: string,
+): Partial<ResolvedNodeStyle> {
+  if (!distanceVisualState || distanceVisualState.mode === "off" || distanceVisualState.status !== "ready") {
+    return {};
+  }
+
+  const distance = distanceVisualState.structuralDistances[nodeId];
+  const isAnchor = distanceVisualState.anchorNodeId === nodeId;
+
+  if (distanceVisualState.mode === "ego") {
+    if (distance == null) {
+      return {
+        color: withAlpha(theme.palette.overview.nodeMuted, 0.34),
+        shellColor: withAlpha(theme.palette.overview.nodeBorder, 0.16),
+        size: Math.max(0.75, baseStyle.size * 0.28),
+        borderColor: withAlpha(theme.palette.overview.nodeBorder, 0.18),
+        borderSize: Math.max(0.25, baseStyle.borderSize * 0.45),
+        label: "",
+        forceLabel: false,
+        zIndex: Math.min(baseStyle.zIndex, 0),
+      };
+    }
+
+    const ratio = clamp(0, distance / Math.max(1, distanceVisualState.maxHops), 1);
+    const bandColor = getDistanceBandColor(distance);
+    return {
+      color: withAlpha(bandColor, isAnchor ? 0.98 : 0.88 - ratio * 0.44),
+      shellColor: withAlpha(bandColor, isAnchor ? 0.92 : 0.54 - ratio * 0.24),
+      size: Math.max(baseStyle.size * (isAnchor ? 1.18 : 1 - ratio * 0.22), baseStyle.size * 0.66),
+      borderColor: isAnchor ? theme.nodes.selectedRing.color : withAlpha(bandColor, 0.72 - ratio * 0.24),
+      borderSize: baseStyle.borderSize + (isAnchor ? 1.1 : 0.28),
+      forceLabel: isAnchor || baseStyle.forceLabel,
+      label: isAnchor ? (distanceVisualState.anchorLabel ?? baseStyle.label) || baseStyle.label : baseStyle.label,
+      zIndex: isAnchor ? Math.max(baseStyle.zIndex, 4) : Math.max(baseStyle.zIndex, 1),
+    };
+  }
+
+  if (distanceVisualState.mode === "heatmap") {
+    const visibleSet = getHeatmapVisibleSet(distanceVisualState);
+    const isRenderedHeatmapNode = isAnchor || visibleSet.size === 0 || visibleSet.has(nodeId);
+
+    if (distance == null || !isRenderedHeatmapNode) {
+      return {
+        color: withAlpha(theme.palette.overview.nodeMuted, zoomTier === "overview" ? 0.055 : 0.09),
+        shellColor: withAlpha(theme.palette.overview.nodeBorder, 0.015),
+        borderColor: withAlpha(theme.palette.overview.nodeBorder, 0.035),
+        borderSize: Math.max(0.12, baseStyle.borderSize * 0.18),
+        size: Math.max(0.45, baseStyle.size * 0.2),
+        label: "",
+        forceLabel: false,
+        zIndex: Math.min(baseStyle.zIndex, 0),
+        coreScale: 0,
+      };
+    }
+
+    const bandColor = getDistanceBandColor(distance);
+    const ringStyle = resolveHeatmapRingStyle(distance, isHeatmapSaturated(distanceVisualState.distanceCounts));
+    const label = isAnchor ? (distanceVisualState.anchorLabel ?? baseStyle.label) || baseStyle.label : "";
+    return {
+      color: withAlpha(bandColor, ringStyle.alpha),
+      shellColor: withAlpha(bandColor, ringStyle.shellAlpha),
+      borderColor: isAnchor ? theme.nodes.selectedRing.color : withAlpha(bandColor, ringStyle.borderAlpha),
+      borderSize: Math.max(0.18, baseStyle.borderSize + ringStyle.borderBoost),
+      size: Math.max(0.7, baseStyle.size * ringStyle.sizeMultiplier),
+      forceLabel: isAnchor,
+      label,
+      zIndex: Math.max(isAnchor ? baseStyle.zIndex : 0, ringStyle.zIndex),
+    };
+  }
+
+  return {};
+}
+
+export function resolveDistanceEdgeStyle(
+  baseStyle: ResolvedEdgeStyle,
+  distanceVisualState: GraphDistanceVisualState | undefined,
+  sourceId: string,
+  targetId: string,
+  fullEdgeClass?: GraphFullEdgeClass,
+): Partial<ResolvedEdgeStyle> {
+  if (!distanceVisualState || distanceVisualState.mode === "off" || distanceVisualState.status !== "ready") {
+    return {};
+  }
+
+  if (distanceVisualState.mode === "heatmap") {
+    if (fullEdgeClass === "path" || fullEdgeClass === "selected" || fullEdgeClass === "local-context") {
+      return {};
+    }
+
+    return {
+      hidden: true,
+      color: withAlpha("#1D2A35", 0.02),
+      size: Math.min(baseStyle.size ?? 0.35, 0.2),
+      zIndex: 0,
+    };
+  }
+
+  if (distanceVisualState.mode === "structural") {
+    const sourceDistance = distanceVisualState.structuralDistances[sourceId];
+    const targetDistance = distanceVisualState.structuralDistances[targetId];
+    const distance = Math.min(sourceDistance ?? Number.POSITIVE_INFINITY, targetDistance ?? Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(distance) || distance > distanceVisualState.maxHops) {
+      return {};
+    }
+    const bandColor = getDistanceBandColor(distance);
+    return {
+      hidden: false,
+      color: withAlpha(bandColor, distance <= 1 ? 0.72 : distance <= 3 ? 0.48 : 0.32),
+      size: Math.max(baseStyle.size ?? 0.6, distance <= 1 ? 1.25 : distance <= 3 ? 0.95 : 0.7),
+      zIndex: Math.max(baseStyle.zIndex, distance <= 1 ? 5 : 3),
+      type: "line",
+      curvature: 0,
+    };
+  }
+
+  if (distanceVisualState.mode === "semantic") {
+    const anchorNodeId = distanceVisualState.anchorNodeId;
+    if (!anchorNodeId || (sourceId !== anchorNodeId && targetId !== anchorNodeId)) {
+      return {};
+    }
+    const otherNodeId = sourceId === anchorNodeId ? targetId : sourceId;
+    const score = distanceVisualState.semanticScores[otherNodeId];
+    if (score == null) {
+      return {};
+    }
+    const scoreColor = getSemanticScoreColor(score);
+    return {
+      hidden: false,
+      color: withAlpha(scoreColor, 0.34 + clamp(0, score, 1) * 0.42),
+      size: Math.max(baseStyle.size ?? 0.6, 0.8 + clamp(0, score, 1) * 0.75),
+      zIndex: Math.max(baseStyle.zIndex, 4),
+      type: "line",
+      curvature: 0,
+    };
+  }
+
+  return {};
+}
 
 function forEachDirectedEdgeBetween(
   graphRef: GraphRef,
