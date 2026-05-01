@@ -5,7 +5,6 @@ Ontology Hub routes: registry, URL/file loading, preview, creation, entity searc
 import asyncio
 import ipaddress
 import logging
-import re
 import socket
 import uuid
 from datetime import UTC, datetime
@@ -267,7 +266,11 @@ def _detect_format(content: str) -> str:
         return "xml"
     if "@prefix" in stripped or "@base" in stripped:
         return "turtle"
-    if re.match(r"_:\w+|<[^>]+>\s+<[^>]+>", stripped):
+    # N-Triples blank-node subject: "_:word <predicate-uri> ..."
+    # URI-subject N-Triples ("<uri> <uri>") are already caught by the XML
+    # branch above, so only the blank-node form needs to be checked here.
+    # Plain string ops avoid the polynomial regex that CodeQL flags (py/polynomial-redos).
+    if stripped.startswith("_:") and " <" in stripped:
         return "nt"
     return "turtle"
 
