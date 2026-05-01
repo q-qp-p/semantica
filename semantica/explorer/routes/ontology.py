@@ -3,16 +3,20 @@ Ontology Hub routes: registry, URL/file loading, preview, creation, entity searc
 """
 
 import asyncio
+import ipaddress
 import re
+import socket
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Literal, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from ..dependencies import get_session
 from ..session import GraphSession
+from ..utils.rdf_parser import _safe_parse_rdf
 
 router = APIRouter(prefix="/api/ontology", tags=["Ontology"])
 
@@ -273,7 +277,32 @@ def _normalize_format(fmt: Optional[str]) -> str:
     return _FORMAT_ALIASES.get(lower, lower)
 
 
+def _validate_fetch_url(url: str) -> None:
+    """Reject non-HTTP(S) schemes and private/loopback/link-local targets."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=422, detail="Only http and https URLs are allowed.")
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(status_code=422, detail="Invalid URL: missing hostname.")
+    try:
+        addrinfos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=422, detail=f"Cannot resolve hostname '{hostname}': {exc}") from exc
+    for _family, _type, _proto, _canonname, sockaddr in addrinfos:
+        try:
+            ip = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            continue
+        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise HTTPException(
+                status_code=422,
+                detail="Fetching from private, loopback, or reserved network addresses is not allowed.",
+            )
+
+
 def _fetch_url_sync(url: str) -> bytes:
+    _validate_fetch_url(url)
     import requests as _req
     try:
         resp = _req.get(
@@ -281,6 +310,7 @@ def _fetch_url_sync(url: str) -> bytes:
             headers={"Accept": "text/turtle, application/rdf+xml, application/ld+json, */*;q=0.1"},
             timeout=30,
             stream=True,
+            allow_redirects=True,
         )
         resp.raise_for_status()
         chunks: List[bytes] = []
@@ -312,7 +342,7 @@ def _parse_rdf_sync(content: bytes, fmt: str) -> tuple:
 
     g = rdflib.Graph()
     try:
-        g.parse(data=content, format=parse_fmt)
+        _safe_parse_rdf(g, content, parse_fmt)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"RDF parse error: {exc}") from exc
 
@@ -654,11 +684,12 @@ async def search_entities(
     limit: int = Query(default=50, ge=1, le=200),
     session: GraphSession = Depends(get_session),
 ):
-    all_nodes, _ = await asyncio.to_thread(session.get_nodes, skip=0, limit=999_999)
+    # Use the session's indexed search; over-fetch to allow post-filtering by entity type
+    raw_hits = await asyncio.to_thread(session.search, q, limit * 6)
     results: List[OntologySearchResult] = []
-    q_lower = q.lower()
 
-    for node in all_nodes:
+    for hit in raw_hits:
+        node = hit.get("node", hit)  # session.search returns {"node": ..., "score": ...}
         ntype = node.get("type", "")
         if ntype not in _SEARCHABLE_TYPES:
             continue
@@ -673,9 +704,6 @@ async def search_entities(
             or props.get("skos:definition")
             or props.get("description")
         )
-        corpus = " ".join(filter(None, [label, node.get("id", ""), definition or ""])).lower()
-        if q_lower not in corpus:
-            continue
 
         results.append(OntologySearchResult(
             uri=node.get("id", ""),
@@ -821,14 +849,12 @@ async def remove_ontology(ontology_uri: str, request: Request):
 
 @router.patch("/{ontology_uri:path}/toggle", response_model=ToggleResponse)
 async def toggle_ontology(ontology_uri: str, request: Request):
-    # Strip the /toggle suffix that FastAPI includes when path ends with it
-    uri = ontology_uri.removesuffix("/toggle")
     registry = _get_registry(request)
-    if uri not in registry:
+    if ontology_uri not in registry:
         raise HTTPException(status_code=404, detail="Ontology not found in registry.")
-    entry = registry[uri]
+    entry = registry[ontology_uri]
     entry.enabled = not entry.enabled
-    return ToggleResponse(uri=uri, enabled=entry.enabled)
+    return ToggleResponse(uri=ontology_uri, enabled=entry.enabled)
 
 
 @router.post("/{ontology_uri:path}/refresh", response_model=RefreshResponse)
@@ -837,11 +863,10 @@ async def refresh_ontology(
     request: Request,
     session: GraphSession = Depends(get_session),
 ):
-    uri = ontology_uri.removesuffix("/refresh")
     registry = _get_registry(request)
-    if uri not in registry:
+    if ontology_uri not in registry:
         raise HTTPException(status_code=404, detail="Ontology not found in registry.")
-    entry = registry[uri]
+    entry = registry[ontology_uri]
     if not entry.source_url:
         raise HTTPException(status_code=422, detail="No source URL to refresh from.")
 
@@ -861,4 +886,4 @@ async def refresh_ontology(
     edges_added = await asyncio.to_thread(session.add_edges, edges)
     entry.loaded_at = datetime.now(UTC).isoformat()
 
-    return RefreshResponse(uri=uri, nodes_added=nodes_added, edges_added=edges_added)
+    return RefreshResponse(uri=ontology_uri, nodes_added=nodes_added, edges_added=edges_added)

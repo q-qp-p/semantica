@@ -255,7 +255,8 @@ export function OntologyManager() {
     try {
       const params = new URLSearchParams();
       if (searchQ) params.set("q", searchQ);
-      if (statusFilter !== "all") params.set("status", statusFilter);
+      // format/kind filters (owl/skos/internal/external) are applied client-side
+      // via filteredEntries; only text search is delegated to the backend
       const res = await fetch(`/api/ontology/registry?${params}`);
       if (!res.ok) throw new Error("Failed to load registry");
       setEntries(await res.json());
