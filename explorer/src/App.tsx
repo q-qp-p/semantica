@@ -29,8 +29,9 @@ const RegistryTab = lazy(() => import('./workspaces/EnrichWorkspace/RegistryTab'
 const EntityResolutionTab = lazy(() => import('./workspaces/EnrichWorkspace/EntityResolutionTab').then((module) => ({ default: module.EntityResolutionTab })));
 const KGOverviewTab = lazy(() => import('./workspaces/ManageWorkspace/KGOverviewTab').then((module) => ({ default: module.KGOverviewTab })));
 const OntologySummaryTab = lazy(() => import('./workspaces/ManageWorkspace/OntologySummaryTab').then((module) => ({ default: module.OntologySummaryTab })));
+const OntologyWorkspace = lazy(() => import('./workspaces/OntologyWorkspace').then((module) => ({ default: module.OntologyWorkspace })));
 
-type WorkspaceId = 'welcome' | 'explore' | 'analyze' | 'decisions' | 'enrich' | 'manage';
+type WorkspaceId = 'welcome' | 'explore' | 'analyze' | 'decisions' | 'enrich' | 'manage' | 'ontology-hub';
 type ExploreView = 'graph' | 'vocabulary';
 type AnalyzeView = 'sparql' | 'reasoning';
 type EnrichView = 'import' | 'merge' | 'registry' | 'resolve';
@@ -80,6 +81,7 @@ const navItems: NavItem[] = [
   { id: 'decisions', label: 'Decisions', hint: 'Decision chains and precedent review', icon: Scale },
   { id: 'enrich', label: 'Enrich', hint: 'Import, export, and merge workflows', icon: GitBranchPlus },
   { id: 'manage', label: 'Manage', hint: 'Lineage and governance tooling', icon: Settings2 },
+  { id: 'ontology-hub', label: 'Ontology Hub', hint: 'Schema governance, registry, and vocabulary management', icon: GitMerge },
 ];
 
 const shellStyles = `
@@ -1236,6 +1238,7 @@ export default function App() {
   const [enrichView, setEnrichView] = useState<EnrichView>('import');
   const [manageView, setManageView] = useState<ManageView>('lineage');
 
+
   const renderWorkspace = () => {
     if (activeWorkspace === 'welcome') {
       return (
@@ -1353,6 +1356,21 @@ export default function App() {
              enrichView === 'merge' ? <DiffMergeWorkspace /> :
              enrichView === 'resolve' ? <EntityResolutionTab /> :
              <RegistryTab />}
+          </Suspense>
+        </WorkspaceShell>
+      );
+    }
+
+    if (activeWorkspace === 'ontology-hub') {
+      return (
+        <WorkspaceShell
+          title="Ontology Hub"
+          subtitle="Load, browse, edit, and govern ontologies and vocabularies."
+          kicker="Schema Governance"
+          compact
+        >
+          <Suspense fallback={<WorkspaceFallback />}>
+            <OntologyWorkspace />
           </Suspense>
         </WorkspaceShell>
       );

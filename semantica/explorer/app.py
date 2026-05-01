@@ -98,6 +98,7 @@ def create_app(session: Optional[GraphSession] = None) -> FastAPI:
     from .routes.enrich import router as enrich_router
     from .routes.export_import import router as export_import_router
     from .routes.graph import router as graph_router
+    from .routes.ontology import router as ontology_router
     from .routes.provenance import router as provenance_router
     from .routes.sparql import router as sparql_router
     from .routes.temporal import router as temporal_router
@@ -113,6 +114,7 @@ def create_app(session: Optional[GraphSession] = None) -> FastAPI:
     app.include_router(sparql_router)
     app.include_router(provenance_router)
     app.include_router(vocabulary_router)
+    app.include_router(ontology_router)
 
     _WS_MAX_MESSAGE_BYTES = 64 * 1024  # 64 KB — control messages only
 
