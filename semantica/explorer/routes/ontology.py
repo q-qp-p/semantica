@@ -4,25 +4,21 @@ Ontology Hub routes: registry, URL/file loading, preview, creation, entity searc
 
 import os
 import asyncio
+import ipaddress
 import logging
-import re
 import socket
 import uuid
 from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 from typing_extensions import Literal
 
-import rdflib
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from ..session import GraphSession
 from ..dependencies import get_session
 from ..utils.rdf_parser import _safe_parse_rdf
-from ...utils.exceptions import ProcessingError, ValidationError
-
-# RDF imports
-from rdflib import RDF, RDFS, OWL, SKOS
 try:
     from rdflib.namespace import DCT, DC
 except ImportError:
@@ -85,6 +81,16 @@ _FORMAT_ALIASES: Dict[str, str] = {
     "owl": "xml",
     "jsonld": "json-ld",
     "json": "json-ld",
+}
+
+_INGEST_FORMAT_SUFFIXES: Dict[str, str] = {
+    "turtle": ".ttl",
+    "xml": ".rdf",
+    "json-ld": ".jsonld",
+    "nt": ".nt",
+    "n3": ".n3",
+    "trig": ".trig",
+    "nquads": ".nq",
 }
 
 
@@ -355,6 +361,36 @@ def _get_versions(request: Request) -> Dict[str, List[VersionEntry]]:
     return request.app.state.ontology_versions
 
 
+def _get_alignment_store(request: Request) -> Dict[str, AlignmentResponse]:
+    if not hasattr(request.app.state, "ontology_alignment_store"):
+        request.app.state.ontology_alignment_store = {}
+    return request.app.state.ontology_alignment_store
+
+
+def _alignment_key(source: str, predicate: str, target: str) -> str:
+    return f"{source}::{predicate}::{target}"
+
+
+def _coerce_alignment(raw: Any) -> Optional[AlignmentResponse]:
+    if isinstance(raw, AlignmentResponse):
+        return raw
+    if isinstance(raw, dict):
+        source = raw.get("source") or raw.get("source_uri")
+        target = raw.get("target") or raw.get("target_uri")
+        predicate = raw.get("predicate") or raw.get("relation")
+        if source and target and predicate:
+            return AlignmentResponse(source=source, predicate=predicate, target=target)
+    return None
+
+
+def _version_field(version: Any, field: str, default: Any = None) -> Any:
+    if isinstance(version, VersionEntry):
+        return getattr(version, field)
+    if isinstance(version, dict):
+        return version.get(field, default)
+    return default
+
+
 def _uri_to_prefix(uri: str) -> str:
     for base, prefix in _URI_PREFIX_MAP.items():
         if uri.startswith(base):
@@ -389,6 +425,17 @@ def _node_label(node: Dict[str, Any]) -> str:
         or node.get("content", "")
         or node.get("id", "")
     )
+
+
+def _as_uri_list(value: Any) -> List[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if item]
+    if isinstance(value, dict):
+        uri = value.get("uri") or value.get("id") or value.get("@id")
+        return [str(uri)] if uri else []
+    return [str(value)]
 
 
 def _convert_ontology_to_graph(ontology_dict: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -449,17 +496,17 @@ def _convert_ontology_to_graph(ontology_dict: Dict[str, Any]) -> Tuple[List[Dict
         nodes.append(node)
         
         # Add domain and range edges
-        if prop.get("domain"):
+        for domain_uri in _as_uri_list(prop.get("domain")):
             edges.append({
                 "source": prop_uri,
-                "target": prop["domain"],
+                "target": domain_uri,
                 "type": "rdfs:domain",
                 "weight": 1.0,
             })
-        if prop.get("range"):
+        for range_uri in _as_uri_list(prop.get("range")):
             edges.append({
                 "source": prop_uri,
-                "target": prop["range"],
+                "target": range_uri,
                 "type": "rdfs:range",
                 "weight": 1.0,
             })
@@ -787,6 +834,9 @@ async def load_ontology(
         content_str = body.content or ""
 
     fmt = _normalize_format(body.format) if body.format else _detect_format(content_str)
+    suffix = _INGEST_FORMAT_SUFFIXES.get(fmt)
+    if suffix is None:
+        raise HTTPException(status_code=422, detail=f"Unsupported ontology format: {fmt}")
 
     try:
         # Try to use OntologyIngestor for proper parsing and conversion
@@ -796,7 +846,7 @@ async def load_ontology(
         ingestor = OntologyIngestor()
         
         # Write content to temporary file for ingestion
-        with NamedTemporaryFile(mode='w', suffix=f'.{fmt}', delete=False, encoding='utf-8') as temp_file:
+        with NamedTemporaryFile(mode="w", suffix=suffix, delete=False, encoding="utf-8") as temp_file:
             temp_file.write(content_str)
             temp_path = temp_file.name
         
@@ -826,7 +876,7 @@ async def load_ontology(
                 name=ontology_data.data.get("name", "Imported Ontology"),
                 description=ontology_data.data.get("description"),
                 format=fmt,
-                status="loaded",
+                status="external",
                 version=ontology_data.data.get("version", "1.0"),
                 class_count=len([n for n in nodes if n.get("type") in _CLASS_TYPES]),
                 concept_count=len([n for n in nodes if n.get("type") in _CONCEPT_TYPES]),
@@ -849,8 +899,8 @@ async def load_ontology(
             # Clean up temporary file
             try:
                 os.unlink(temp_path)
-            except:
-                pass
+            except OSError as cleanup_exc:
+                logger.debug("Failed to remove temporary ontology file: %s", cleanup_exc)
                 
     except Exception as ingest_exc:
         logger.warning(f"OntologyIngestor failed, falling back to basic parsing: {ingest_exc}")
@@ -875,7 +925,7 @@ async def load_ontology(
         name=metadata.get("name", "Imported Ontology"),
         description=metadata.get("description"),
         format=fmt,
-        status="loaded",
+        status="external",
         version=metadata.get("version", "1.0"),
         class_count=sum(1 for n in nodes if n.get("type") in _CLASS_TYPES),
         concept_count=sum(1 for n in nodes if n.get("type") in _CONCEPT_TYPES),
@@ -1492,14 +1542,13 @@ async def save_draft(
     # Create ChangeLogEntry for audit trail
     try:
         from ...change_management.change_log import ChangeLogEntry
-        change_log = ChangeLogEntry.create_now(
+        ChangeLogEntry.create_now(
             author=body.author,
             description=body.summary or f"Draft changes for {body.ontology_uri}",
             change_id=draft_id
         )
     except Exception as exc:
         logger.warning(f"Failed to create ChangeLogEntry: {exc}")
-        change_log = None
 
     draft = DraftResponse(
         draft_id=draft_id,
@@ -1606,7 +1655,7 @@ async def submit_proposal(
         if engine.store:
             try:
                 # Generate SHACL from target ontology
-                shacl_shapes = await asyncio.to_thread(
+                await asyncio.to_thread(
                     engine.to_shacl,
                     target_ontology,
                     format="turtle"
@@ -1753,20 +1802,6 @@ async def publish_proposal(
         raise HTTPException(status_code=404, detail="Draft not found.")
     draft = drafts[proposal.draft_id]
 
-    # Apply draft diff to live graph
-    nodes_added = 0
-    edges_added = 0
-
-    # Add new classes
-    for class_uri in draft.diff.added_classes:
-        node = {
-            "id": class_uri,
-            "type": "owl:Class",
-            "content": class_uri.rsplit("/", 1)[-1].rsplit("#", 1)[-1],
-            "properties": {"rdfs:label": class_uri.rsplit("/", 1)[-1].rsplit("#", 1)[-1]},
-        }
-        nodes_added += await asyncio.to_thread(session.add_nodes, [node])
-
     # Build ontology dict for version creation
     ontology_dict = {
         "uri": proposal.ontology_uri,
@@ -1791,7 +1826,7 @@ async def publish_proposal(
         version_num = len(existing_versions) + 1
         version_str = f"1.{version_num}.0"
         
-        version_record = version_manager.create_version(
+        version_manager.create_version(
             version=version_str,
             ontology=ontology_dict,
             changes=[proposal.summary],
@@ -1801,20 +1836,51 @@ async def publish_proposal(
         if proposal.ontology_uri not in versions:
             versions[proposal.ontology_uri] = []
         
-        versions[proposal.ontology_uri].append({
-            "version_id": version_str,
-            "ontology_uri": proposal.ontology_uri,
-            "state": "published",
-            "author": proposal.author,
-            "date": datetime.now(UTC).isoformat(),
-            "diff_summary": draft.diff.model_dump(),
-        })
+        versions[proposal.ontology_uri].append(
+            VersionEntry(
+                version_id=version_str,
+                ontology_uri=proposal.ontology_uri,
+                state="published",
+                author=proposal.author,
+                date=datetime.now(UTC).isoformat(),
+                diff_summary=draft.diff.model_dump(),
+            )
+        )
         
         logger.info(f"Created version {version_str} for ontology {proposal.ontology_uri}")
         
     except Exception as exc:
         logger.warning(f"VersionManager.create_version failed: {exc}")
         raise HTTPException(status_code=500, detail=f"Version creation failed: {exc}") from exc
+
+    # Apply additions only after version creation succeeds so failed publishes do not
+    # leave a partially mutated live graph.
+    nodes_added = 0
+    edges_added = 0
+
+    class_nodes = []
+    for class_uri in draft.diff.added_classes:
+        label = class_uri.rsplit("/", 1)[-1].rsplit("#", 1)[-1]
+        class_nodes.append({
+            "id": class_uri,
+            "type": "owl:Class",
+            "content": label,
+            "properties": {"rdfs:label": label},
+        })
+    if class_nodes:
+        nodes_added += await asyncio.to_thread(session.add_nodes, class_nodes)
+
+    property_nodes = []
+    for prop_uri in draft.diff.added_properties:
+        label = prop_uri.rsplit("/", 1)[-1].rsplit("#", 1)[-1]
+        property_nodes.append({
+            "id": prop_uri,
+            "type": "owl:ObjectProperty",
+            "content": label,
+            "properties": {"rdfs:label": label},
+        })
+    if property_nodes:
+        nodes_added += await asyncio.to_thread(session.add_nodes, property_nodes)
 
     proposal.state = "published"
     proposal.updated_at = datetime.now(UTC).isoformat()
@@ -1885,9 +1951,10 @@ async def compare_versions(
         versions = _get_versions(request)
         ontology_versions = versions.get(ontology_uri, [])
         
-        # Find version records
-        v1_record = next((v for v in ontology_versions if v.version_id == body.version1), None)
-        v2_record = next((v for v in ontology_versions if v.version_id == body.version2), None)
+        # Find version records. Older in-memory state may contain plain dicts, while
+        # new publishes store VersionEntry models.
+        v1_record = next((v for v in ontology_versions if _version_field(v, "version_id") == body.version1), None)
+        v2_record = next((v for v in ontology_versions if _version_field(v, "version_id") == body.version2), None)
         
         if not v1_record or not v2_record:
             raise HTTPException(status_code=404, detail="One or both versions not found.")
@@ -1898,14 +1965,14 @@ async def compare_versions(
             "version": body.version1,
             "classes": [],
             "properties": [],
-            "diff": v1_record.diff_summary,
+            "diff": _version_field(v1_record, "diff_summary", {}),
         }
         v2_dict = {
             "uri": ontology_uri,
             "version": body.version2,
             "classes": [],
             "properties": [],
-            "diff": v2_record.diff_summary,
+            "diff": _version_field(v2_record, "diff_summary", {}),
         }
         
         # Use VersionManager.diff_ontologies for structured comparison
@@ -1915,17 +1982,26 @@ async def compare_versions(
             v2_dict
         )
         
-        # Use VersionManager.compare_versions for metadata comparison
-        comparison = await asyncio.to_thread(
-            version_manager.compare_versions,
-            body.version1,
-            body.version2
-        )
+        metadata_changes = {
+            "version_id": {"from": body.version1, "to": body.version2},
+            "author": {
+                "from": _version_field(v1_record, "author"),
+                "to": _version_field(v2_record, "author"),
+            },
+            "date": {
+                "from": _version_field(v1_record, "date"),
+                "to": _version_field(v2_record, "date"),
+            },
+            "state": {
+                "from": _version_field(v1_record, "state"),
+                "to": _version_field(v2_record, "state"),
+            },
+        }
         
         return VersionCompareResponse(
             version1=body.version1,
             version2=body.version2,
-            metadata_changes=comparison.get("metadata_changes", {}),
+            metadata_changes=metadata_changes,
             class_changes={
                 "added": diff_result.get("added_classes", []),
                 "removed": diff_result.get("removed_classes", []),
@@ -1961,9 +2037,15 @@ async def compare_versions(
 @router.post("/alignments", response_model=AlignmentResponse)
 async def create_alignment(
     body: AlignmentRequest,
+    request: Request,
     session: GraphSession = Depends(get_session),
 ):
     """Create an alignment between two ontology entities using OntologyEngine.create_alignment."""
+    response = AlignmentResponse(
+        source=body.source_uri,
+        predicate=body.predicate,
+        target=body.target_uri,
+    )
     try:
         from ...ontology import OntologyEngine
         
@@ -1978,23 +2060,26 @@ async def create_alignment(
             body.target_uri,
             body.predicate
         )
-        
-        return AlignmentResponse(
-            source=body.source_uri,
-            predicate=body.predicate,
-            target=body.target_uri,
-        )
     except Exception as exc:
-        logger.error(f"Failed to create alignment: {exc}")
-        raise HTTPException(status_code=500, detail=f"Alignment creation failed: {exc}") from exc
+        logger.info("OntologyEngine alignment store unavailable; using route-level store: %s", exc)
+
+    alignment_store = _get_alignment_store(request)
+    alignment_store[_alignment_key(response.source, response.predicate, response.target)] = response
+    return response
 
 
 @router.get("/alignments/{entity_uri:path}", response_model=List[AlignmentResponse])
 async def get_alignments(
     entity_uri: str,
+    request: Request,
     session: GraphSession = Depends(get_session),
 ):
     """Get all alignments for an entity using OntologyEngine.get_alignments."""
+    route_alignments = [
+        alignment
+        for alignment in _get_alignment_store(request).values()
+        if alignment.source == entity_uri or alignment.target == entity_uri
+    ]
     try:
         from ...ontology import OntologyEngine
         
@@ -2005,25 +2090,34 @@ async def get_alignments(
         # Use OntologyEngine.get_alignments
         alignments = await asyncio.to_thread(engine.get_alignments, entity_uri)
         
-        return [
-            AlignmentResponse(
-                source=align.get("source", ""),
-                predicate=align.get("predicate", ""),
-                target=align.get("target", ""),
-            )
-            for align in alignments
+        engine_alignments = [
+            alignment
+            for alignment in (_coerce_alignment(align) for align in alignments)
+            if alignment is not None
         ]
+        merged = {
+            _alignment_key(alignment.source, alignment.predicate, alignment.target): alignment
+            for alignment in route_alignments + engine_alignments
+        }
+        return list(merged.values())
     except Exception as exc:
-        logger.error(f"Failed to get alignments: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to get alignments: {exc}") from exc
+        logger.info("OntologyEngine alignment lookup unavailable; using route-level store: %s", exc)
+        return route_alignments
 
 
 @router.get("/alignments", response_model=List[AlignmentResponse])
 async def list_alignments(
+    request: Request,
     ontology_uri: Optional[str] = Query(None),
     session: GraphSession = Depends(get_session),
 ):
     """List all alignments, optionally filtered by ontology URI using OntologyEngine.list_alignments."""
+    route_alignments = list(_get_alignment_store(request).values())
+    if ontology_uri:
+        route_alignments = [
+            alignment for alignment in route_alignments
+            if ontology_uri in alignment.source or ontology_uri in alignment.target
+        ]
     try:
         from ...ontology import OntologyEngine
         
@@ -2034,14 +2128,16 @@ async def list_alignments(
         # Use OntologyEngine.list_alignments
         alignments = await asyncio.to_thread(engine.list_alignments, ontology_uri=ontology_uri)
         
-        return [
-            AlignmentResponse(
-                source=align.get("source", ""),
-                predicate=align.get("predicate", ""),
-                target=align.get("target", ""),
-            )
-            for align in alignments
+        engine_alignments = [
+            alignment
+            for alignment in (_coerce_alignment(align) for align in alignments)
+            if alignment is not None
         ]
+        merged = {
+            _alignment_key(alignment.source, alignment.predicate, alignment.target): alignment
+            for alignment in route_alignments + engine_alignments
+        }
+        return list(merged.values())
     except Exception as exc:
-        logger.error(f"Failed to list alignments: {exc}")
-        raise HTTPException(status_code=500, detail=f"Failed to list alignments: {exc}") from exc
+        logger.info("OntologyEngine alignment listing unavailable; using route-level store: %s", exc)
+        return route_alignments

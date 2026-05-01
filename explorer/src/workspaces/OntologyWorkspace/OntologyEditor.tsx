@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -7,33 +7,32 @@ import {
   addEdge,
   useNodesState,
   useEdgesState,
-  Connection,
-  Edge,
-  Node,
   MarkerType,
 } from "@xyflow/react";
+import type { Connection, Edge, Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
   Plus,
-  Box,
   GitBranch,
   User,
   Shield,
   FileText,
-  Download,
   Layout,
   Send,
-  MoreVertical,
   Pencil,
   Trash2,
-  Link,
-  ArrowRight,
-  ArrowLeft,
-  GitMerge,
 } from "lucide-react";
 
+type OntologyNodeData = {
+  label?: string;
+  type?: string;
+};
+
+type OntologyNode = Node<OntologyNodeData>;
+type OntologyEdge = Edge<Record<string, unknown>>;
+
 const nodeTypes = {
-  classNode: ({ data }: { data: any }) => (
+  classNode: ({ data }: { data: OntologyNodeData }) => (
     <div style={classNodeStyle}>
       <div style={classNodeHeader}>{data.label}</div>
       <div style={classNodeSub}>{data.type}</div>
@@ -80,10 +79,16 @@ interface DraftDiff {
   annotation_changes: Record<string, Record<string, any>>;
 }
 
+interface RegistryEntry {
+  uri: string;
+  name: string;
+}
+
 export function OntologyEditor() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [selectedElement, setSelectedElement] = useState<Node | Edge | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState<OntologyNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<OntologyEdge>([]);
+  const [selectedElement, setSelectedElement] = useState<OntologyNode | OntologyEdge | null>(null);
+  const [registry, setRegistry] = useState<RegistryEntry[]>([]);
   const [ontologyUri, setOntologyUri] = useState<string>("");
   const [draftDiff, setDraftDiff] = useState<DraftDiff>({
     added_classes: [],
@@ -99,7 +104,24 @@ export function OntologyEditor() {
     annotation_changes: {},
   });
   const [isSaving, setIsSaving] = useState(false);
-  const [showContext, setShowContext] = useState<{ x: number; y: number; type: string; element: any } | null>(null);
+  const [showContext, setShowContext] = useState<{ x: number; y: number; type: string; element: OntologyNode | OntologyEdge } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ontology/registry")
+      .then((response) => (response.ok ? response.json() : []))
+      .then((entries: RegistryEntry[]) => {
+        if (cancelled) return;
+        setRegistry(entries);
+        setOntologyUri((current) => current || entries[0]?.uri || "");
+      })
+      .catch((error) => {
+        console.error("Failed to load ontology registry:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge({ ...params, markerEnd: { type: MarkerType.ArrowClosed } }, eds)),
@@ -108,7 +130,7 @@ export function OntologyEditor() {
 
   const addClass = useCallback(() => {
     const newId = `class_${Date.now()}`;
-    const newNode: Node = {
+    const newNode: OntologyNode = {
       id: newId,
       type: "classNode",
       position: { x: Math.random() * 400, y: Math.random() * 300 },
@@ -122,11 +144,15 @@ export function OntologyEditor() {
   }, [setNodes]);
 
   const addProperty = useCallback(() => {
+    if (nodes.length < 2) {
+      alert("Add at least two classes before creating a property edge.");
+      return;
+    }
     const newId = `prop_${Date.now()}`;
-    const newEdge: Edge = {
+    const newEdge: OntologyEdge = {
       id: newId,
-      source: nodes[0]?.id || "",
-      target: nodes[1]?.id || nodes[0]?.id || "",
+      source: nodes[0].id,
+      target: nodes[1].id,
       label: "hasProperty",
       type: "smoothstep",
       animated: true,
@@ -140,7 +166,7 @@ export function OntologyEditor() {
 
   const addIndividual = useCallback(() => {
     const newId = `ind_${Date.now()}`;
-    const newNode: Node = {
+    const newNode: OntologyNode = {
       id: newId,
       type: "classNode",
       position: { x: Math.random() * 400, y: Math.random() * 300 },
@@ -200,51 +226,55 @@ export function OntologyEditor() {
     }
   }, [ontologyUri, draftDiff]);
 
-  const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+  const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: OntologyNode) => {
     event.preventDefault();
+    setSelectedElement(node);
     setShowContext({ x: event.clientX, y: event.clientY, type: "node", element: node });
   }, []);
 
-  const handleEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+  const handleEdgeContextMenu = useCallback((event: React.MouseEvent, edge: OntologyEdge) => {
     event.preventDefault();
+    setSelectedElement(edge);
     setShowContext({ x: event.clientX, y: event.clientY, type: "edge", element: edge });
   }, []);
 
   const deleteSelected = useCallback(() => {
-    if (selectedElement) {
-      if ("source" in selectedElement) {
-        setEdges((eds) => eds.filter((e) => e.id !== selectedElement.id));
+    const target = showContext?.element ?? selectedElement;
+    if (target) {
+      if ("source" in target) {
+        setEdges((eds) => eds.filter((e) => e.id !== target.id));
         setDraftDiff((prev) => ({
           ...prev,
-          removed_properties: [...prev.removed_properties, selectedElement.id],
+          removed_properties: [...prev.removed_properties, target.id],
         }));
       } else {
-        setNodes((nds) => nds.filter((n) => n.id !== selectedElement.id));
+        setNodes((nds) => nds.filter((n) => n.id !== target.id));
         setDraftDiff((prev) => ({
           ...prev,
-          removed_classes: [...prev.removed_classes, selectedElement.id],
+          removed_classes: [...prev.removed_classes, target.id],
         }));
       }
       setSelectedElement(null);
     }
     setShowContext(null);
-  }, [selectedElement, setNodes, setEdges]);
+  }, [selectedElement, setNodes, setEdges, showContext]);
 
   const renameSelected = useCallback(() => {
-    if (selectedElement && !("source" in selectedElement)) {
-      const newLabel = prompt("Enter new name:", selectedElement.data.label);
+    const target = showContext?.element ?? selectedElement;
+    if (target && !("source" in target)) {
+      const newLabel = prompt("Enter new name:", String(target.data.label ?? ""));
       if (newLabel) {
         setNodes((nds) =>
-          nds.map((n) => (n.id === selectedElement.id ? { ...n, data: { ...n.data, label: newLabel } } : n))
+          nds.map((n) => (n.id === target.id ? { ...n, data: { ...n.data, label: newLabel } } : n))
         );
         setDraftDiff((prev) => ({
           ...prev,
-          modified_classes: { ...prev.modified_classes, [selectedElement.id]: { label: newLabel } },
+          modified_classes: { ...prev.modified_classes, [target.id]: { label: newLabel } },
         }));
       }
     }
     setShowContext(null);
-  }, [selectedElement, setNodes]);
+  }, [selectedElement, setNodes, showContext]);
 
   useEffect(() => {
     const handleClick = () => setShowContext(null);
@@ -274,6 +304,16 @@ export function OntologyEditor() {
     fontWeight: "600",
     cursor: "pointer",
     transition: "160ms ease",
+  };
+
+  const selectStyle: React.CSSProperties = {
+    padding: "8px 12px",
+    borderRadius: "8px",
+    border: "1px solid rgba(127, 208, 255, 0.18)",
+    background: "rgba(3, 9, 18, 0.88)",
+    color: "#ebf3ff",
+    fontSize: "12px",
+    minWidth: "260px",
   };
 
   const contextMenuStyle: React.CSSProperties = {
@@ -314,11 +354,24 @@ export function OntologyEditor() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#07111f" }}>
       <div style={toolbarStyle}>
+        <select
+          aria-label="Active ontology"
+          value={ontologyUri}
+          onChange={(event) => setOntologyUri(event.target.value)}
+          style={selectStyle}
+        >
+          <option value="">Select ontology...</option>
+          {registry.map((entry) => (
+            <option key={entry.uri} value={entry.uri}>
+              {entry.name || entry.uri}
+            </option>
+          ))}
+        </select>
         <button style={toolbarButtonStyle} onClick={addClass}>
           <Plus size={14} />
           Add Class
         </button>
-        <button style={toolbarButtonStyle} onClick={addProperty}>
+        <button style={toolbarButtonStyle} onClick={addProperty} disabled={nodes.length < 2}>
           <GitBranch size={14} />
           Add Property
         </button>
@@ -399,7 +452,7 @@ export function OntologyEditor() {
                   </label>
                   <input
                     type="text"
-                    value={selectedElement.data.label || ""}
+                    value={String(selectedElement.data.label ?? "")}
                     onChange={(e) => {
                       setNodes((nds) =>
                         nds.map((n) =>
@@ -408,6 +461,13 @@ export function OntologyEditor() {
                             : n
                         )
                       );
+                      setDraftDiff((prev) => ({
+                        ...prev,
+                        modified_classes: {
+                          ...prev.modified_classes,
+                          [selectedElement.id]: { label: e.target.value },
+                        },
+                      }));
                     }}
                     style={{
                       width: "100%",
