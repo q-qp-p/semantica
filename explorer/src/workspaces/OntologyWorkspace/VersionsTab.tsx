@@ -3,7 +3,6 @@ import {
   Layers,
   GitMerge,
   Clock,
-  User,
   FileText,
   CheckCircle,
   XCircle,
@@ -12,7 +11,6 @@ import {
   X,
   ArrowRight,
   Scale,
-  MessageSquare,
 } from "lucide-react";
 
 interface VersionEntry {
@@ -46,10 +44,8 @@ export function VersionsTab() {
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [showCompareModal, setShowCompareModal] = useState(false);
-  const [compareVersions, setCompareVersions] = useState<{ v1: string; v2: string } | null>(null);
+  const [comparePair, setComparePair] = useState<{ v1: string; v2: string } | null>(null);
   const [compareResult, setCompareResult] = useState<Record<string, any> | null>(null);
-  const [proposalSummary, setProposalSummary] = useState("");
-  const [reviewer, setReviewer] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const loadVersions = useCallback(async () => {
@@ -81,37 +77,6 @@ export function VersionsTab() {
     loadVersions();
     loadProposals();
   }, [loadVersions, loadProposals]);
-
-  const submitProposal = useCallback(async () => {
-    if (!selectedProposal || !proposalSummary) {
-      alert("Please provide a summary");
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/ontology/propose", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          draft_id: selectedProposal.draft_id,
-          ontology_uri: ontologyUri,
-          summary: proposalSummary,
-          reviewer: reviewer || null,
-        }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        alert(`Proposal submitted: ${data.proposal_id}`);
-        setShowProposalModal(false);
-        loadProposals();
-      }
-    } catch (error) {
-      console.error("Failed to submit proposal:", error);
-      alert("Failed to submit proposal");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedProposal, proposalSummary, reviewer, ontologyUri, loadProposals]);
 
   const approveProposal = useCallback(async (proposalId: string) => {
     try {
@@ -159,16 +124,16 @@ export function VersionsTab() {
     }
   }, [loadProposals, loadVersions]);
 
-  const compareVersions = useCallback(async () => {
-    if (!compareVersions || !ontologyUri) return;
+  const runVersionComparison = useCallback(async () => {
+    if (!comparePair || !ontologyUri) return;
     setIsLoading(true);
     try {
       const response = await fetch(`/api/ontology/versions/${encodeURIComponent(ontologyUri)}/compare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          version1: compareVersions.v1,
-          version2: compareVersions.v2,
+          version1: comparePair.v1,
+          version2: comparePair.v2,
         }),
       });
       if (response.ok) {
@@ -181,7 +146,7 @@ export function VersionsTab() {
     } finally {
       setIsLoading(false);
     }
-  }, [compareVersions, ontologyUri]);
+  }, [comparePair, ontologyUri]);
 
   const getStateIcon = (state: string) => {
     switch (state) {
@@ -336,7 +301,7 @@ export function VersionsTab() {
                 <button
                   style={buttonStyle}
                   onClick={() => {
-                    setCompareVersions({ v1: version.version_id, v2: versions[0]?.version_id || "" });
+                    setComparePair({ v1: version.version_id, v2: versions[0]?.version_id || "" });
                     setShowCompareModal(true);
                   }}
                 >
@@ -460,7 +425,7 @@ export function VersionsTab() {
         </div>
       )}
 
-      {showCompareModal && compareVersions && (
+      {showCompareModal && comparePair && (
         <div style={modalOverlayStyle} onClick={() => setShowCompareModal(false)}>
           <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
@@ -476,8 +441,8 @@ export function VersionsTab() {
                 </label>
                 <input
                   type="text"
-                  value={compareVersions.v1}
-                  onChange={(e) => setCompareVersions({ ...compareVersions, v1: e.target.value })}
+                  value={comparePair.v1}
+                  onChange={(e) => setComparePair({ ...comparePair, v1: e.target.value })}
                   style={inputStyle}
                 />
               </div>
@@ -487,13 +452,13 @@ export function VersionsTab() {
                 </label>
                 <input
                   type="text"
-                  value={compareVersions.v2}
-                  onChange={(e) => setCompareVersions({ ...compareVersions, v2: e.target.value })}
+                  value={comparePair.v2}
+                  onChange={(e) => setComparePair({ ...comparePair, v2: e.target.value })}
                   style={inputStyle}
                 />
               </div>
             </div>
-            <button style={buttonStyle} onClick={compareVersions} disabled={isLoading}>
+            <button style={buttonStyle} onClick={runVersionComparison} disabled={isLoading}>
               <Scale size={12} />
               {isLoading ? "Comparing..." : "Compare"}
             </button>
