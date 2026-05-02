@@ -23,7 +23,8 @@ router = APIRouter(prefix="/api/ontology", tags=["Ontology"])
 logger = logging.getLogger(__name__)
 
 _MAX_FETCH_BYTES = 20 * 1024 * 1024  # 20 MB
-_MAX_ANALYSIS_NODES = 5_000  # cap for health/suggest/shacl node scans to avoid OOM
+_MAX_ANALYSIS_NODES = 5_000   # cap for health/suggest/shacl node scans to avoid OOM
+_MAX_ENTITIES_PER_SIDE = 500  # per-ontology cap for the O(n²) pairwise suggestion loop
 
 _CLASS_TYPES = frozenset({
     "owl:Class", "rdfs:Class",
@@ -471,6 +472,36 @@ def _label_similarity(left: str, right: str) -> float:
     right_tokens = set(right_norm.split())
     token_score = len(left_tokens & right_tokens) / max(len(left_tokens | right_tokens), 1)
     return round(max(sequence, token_score), 4)
+
+
+def _token_set(label: str) -> frozenset:
+    return frozenset(label.lower().replace("_", " ").replace("-", " ").split())
+
+
+def _tfidf_embedding_vectors(labels: List[str]) -> Optional[Dict[str, List[float]]]:
+    """Build character-ngram TF-IDF vectors from entity labels (sklearn-based, no gensim needed)."""
+    if len(labels) < 2:
+        return None
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
+        normed = [" ".join(l.lower().replace("_", " ").replace("-", " ").split()) for l in labels]
+        vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4), min_df=1)
+        matrix = vec.fit_transform(normed)
+        return {label: matrix[i].toarray().flatten().tolist() for i, label in enumerate(labels)}
+    except Exception:
+        return None
+
+
+def _cosine_sim(v1: List[float], v2: List[float]) -> float:
+    try:
+        from ...kg import SimilarityCalculator
+        return SimilarityCalculator().cosine_similarity(v1, v2)
+    except Exception:
+        import math
+        dot = sum(a * b for a, b in zip(v1, v2))
+        n1 = math.sqrt(sum(a * a for a in v1))
+        n2 = math.sqrt(sum(b * b for b in v2))
+        return dot / (n1 * n2) if n1 and n2 else 0.0
 
 
 def _candidate_relation(source: Dict[str, Any], target: Dict[str, Any]) -> AlignmentRelation:
@@ -1233,21 +1264,10 @@ async def upsert_alignment(
         updated_at=now,
     )
     store[alignment_id] = alignment
-
-    try:
-        from ...ontology import OntologyEngine
-        engine = OntologyEngine()
-        await asyncio.to_thread(
-            engine.create_alignment,
-            body.source_uri,
-            body.target_uri,
-            _ALIGNMENT_RELATIONS[body.relation],
-            confidence=body.confidence,
-            provenance=body.provenance,
-        )
-    except Exception as exc:
-        logger.debug("OntologyEngine alignment persistence unavailable; using route store: %s", exc)
-
+    # OntologyEngine.create_alignment() requires a TripletStore (e.g. FalkorDB) which is
+    # not configured in the explorer deployment. Alignments are intentionally stored only
+    # in request.app.state (session memory). The ephemeral-storage banner in the UI
+    # communicates this limitation to users.
     return alignment
 
 
@@ -1279,11 +1299,33 @@ async def suggest_alignments(
     if not body.target_ontology_uri:
         target_nodes = _ontology_entities(nodes)
 
+    # Per-side entity cap to bound the O(n²) comparison loop.
+    if len(source_nodes) > _MAX_ENTITIES_PER_SIDE:
+        logger.warning("suggest-alignments: source side capped at %d entities.", _MAX_ENTITIES_PER_SIDE)
+        source_nodes = source_nodes[:_MAX_ENTITIES_PER_SIDE]
+    if len(target_nodes) > _MAX_ENTITIES_PER_SIDE:
+        logger.warning("suggest-alignments: target side capped at %d entities.", _MAX_ENTITIES_PER_SIDE)
+        target_nodes = target_nodes[:_MAX_ENTITIES_PER_SIDE]
+
+    # Build TF-IDF character-ngram embeddings for all candidate labels.
+    all_entities = source_nodes + target_nodes
+    all_labels = list({_node_label(n) for n in all_entities if _node_label(n)})
+    embeddings: Optional[Dict[str, List[float]]] = await asyncio.to_thread(_tfidf_embedding_vectors, all_labels)
+    has_embeddings = embeddings is not None
+
+    # Pre-build token sets for targets to enable O(1) prefiltering (skip zero-overlap pairs).
+    target_token_sets: Dict[str, frozenset] = {
+        n.get("id", ""): _token_set(_node_label(n)) for n in target_nodes
+    }
+
     suggestions: List[AlignmentSuggestion] = []
     for source_node in source_nodes:
         source_id = source_node.get("id", "")
         source_label = _node_label(source_node)
         source_ontology = _node_source_ontology(source_node)
+        source_tokens = _token_set(source_label)
+        source_vec = embeddings.get(source_label) if has_embeddings else None
+
         for target_node in target_nodes:
             target_id = target_node.get("id", "")
             if not source_id or source_id == target_id:
@@ -1292,9 +1334,34 @@ async def suggest_alignments(
             if source_ontology and target_ontology and source_ontology == target_ontology:
                 continue
 
+            # Token-overlap prefilter: skip pairs with zero shared tokens (Jaccard=0 ⇒ label_sim≈0).
+            target_tokens = target_token_sets.get(target_id, frozenset())
+            if source_tokens and target_tokens and not (source_tokens & target_tokens):
+                continue
+
             target_label = _node_label(target_node)
             label_score = _label_similarity(source_label, target_label)
-            score = label_score
+
+            embedding_sim: Optional[float] = None
+            if has_embeddings and source_vec is not None:
+                target_vec = embeddings.get(target_label)
+                if target_vec is not None:
+                    try:
+                        embedding_sim = round(_cosine_sim(source_vec, target_vec), 4)
+                    except Exception:
+                        embedding_sim = None
+
+            # Combined score: average label and embedding similarity when both are available.
+            if embedding_sim is not None:
+                score = round(0.4 * label_score + 0.6 * embedding_sim, 4)
+                reason = (
+                    f"Label similarity {label_score:.2f}, embedding cosine similarity {embedding_sim:.2f} "
+                    f"(TF-IDF character n-gram vectors via SimilarityCalculator)."
+                )
+            else:
+                score = label_score
+                reason = f"Label similarity {label_score:.2f}; embedding vectors unavailable."
+
             if score < body.threshold:
                 continue
 
@@ -1305,10 +1372,10 @@ async def suggest_alignments(
                 target_uri=target_id,
                 target_label=target_label,
                 relation=relation,
-                score=round(score, 4),
+                score=score,
                 label_similarity=label_score,
-                embedding_similarity=None,
-                reason="Matched by label similarity; embedding similarity was not required or unavailable.",
+                embedding_similarity=embedding_sim,
+                reason=reason,
             ))
 
     suggestions.sort(key=lambda item: item.score, reverse=True)
@@ -1374,15 +1441,12 @@ async def ontology_health(
 
     consistency_score = max(0.0, 100.0 - (len(missing_range) / max(len(properties), 1)) * 60.0)
 
+    assessed_ids = {node.get("id") for node in assessed if node.get("id")}
     alignments = _get_alignment_store(request).values()
     aligned_sources = {
-        item.source_uri
-        for item in alignments
-        if any(item.source_uri == node.get("id") for node in assessed)
+        item.source_uri for item in alignments if item.source_uri in assessed_ids
     } | {
-        item.target_uri
-        for item in alignments
-        if any(item.target_uri == node.get("id") for node in assessed)
+        item.target_uri for item in alignments if item.target_uri in assessed_ids
     }
     alignment_score = (len(aligned_sources) / total) * 100
     if assessed and not aligned_sources:
@@ -1515,16 +1579,29 @@ async def list_shacl_shapes(
 async def validate_shacl(body: ShaclValidateRequest):
     if not body.shacl_turtle.strip():
         raise HTTPException(status_code=422, detail="SHACL Turtle cannot be empty.")
-    # Live validation requires pySHACL and a wired data graph from OntologyEngine.validate_graph().
-    # Always return unavailable until that integration is complete — never return a false "conforms"
-    # result that would mislead users editing shapes.
+
+    # Syntax-check the submitted Turtle with rdflib before claiming anything about it.
+    try:
+        import rdflib  # type: ignore
+        g = rdflib.Graph()
+        await asyncio.to_thread(g.parse, data=body.shacl_turtle, format="turtle")
+    except ImportError:
+        pass  # rdflib unavailable; skip syntax check
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid Turtle syntax: {exc}",
+        ) from exc
+
+    # Live data-graph validation requires pySHACL wired to OntologyEngine.validate_graph().
     return ShaclValidationResponse(
         uri=body.uri,
         conforms=False,
         status="unavailable",
         message=(
-            "Live graph validation is not yet wired to a data graph. "
-            "Install semantica[shacl] and connect OntologyEngine.validate_graph() to enable full validation."
+            "Turtle parsed successfully. "
+            "Live graph validation is not yet wired to a data graph — "
+            "install semantica[shacl] and connect OntologyEngine.validate_graph() to enable full validation."
         ),
         violations=[],
     )

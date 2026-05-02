@@ -18,7 +18,9 @@ export function ShaclStudio({ onJumpToNode }: ShaclStudioProps) {
   const [registry, setRegistry] = useState<OntologyEntry[]>([]);
   const [selectedUri, setSelectedUri] = useState("");
   const [shacl, setShacl] = useState("");
+  const [fullShacl, setFullShacl] = useState(""); // preserves complete Turtle across shape selections
   const [shapes, setShapes] = useState<ShaclShapeSummary[]>([]);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [validation, setValidation] = useState<ShaclValidationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -46,7 +48,10 @@ export function ShaclStudio({ onJumpToNode }: ShaclStudioProps) {
     try {
       const data = await loadShaclShapes(uri);
       setShapes(data.shapes);
-      setShacl((current) => current || data.shacl_turtle);
+      const turtle = data.shacl_turtle;
+      setFullShacl(turtle);
+      setShacl((current) => current || turtle);
+      setSelectedShapeId(null);
       setValidation(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load SHACL shapes.");
@@ -57,16 +62,20 @@ export function ShaclStudio({ onJumpToNode }: ShaclStudioProps) {
 
   useEffect(() => {
     setShacl("");
+    setFullShacl("");
+    setSelectedShapeId(null);
     void loadShapes(selectedUri);
   }, [selectedUri, loadShapes]);
 
-  const handleGenerate = async () => {
+  const handleGenerate = useCallback(async () => {
     if (!selectedUri) return;
     setLoading(true);
     setError("");
     try {
       const data = await generateShacl(selectedUri, "strict");
+      setFullShacl(data.shacl_turtle);
       setShacl(data.shacl_turtle);
+      setSelectedShapeId(null);
       const shapeData = await loadShaclShapes(selectedUri);
       setShapes(shapeData.shapes);
       setValidation(null);
@@ -75,7 +84,29 @@ export function ShaclStudio({ onJumpToNode }: ShaclStudioProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedUri]);
+
+  const handleSelectShape = useCallback((shapeId: string) => {
+    setSelectedShapeId(shapeId);
+    // Extract the Turtle block for this shape from the full SHACL so the editor
+    // pre-populates with the selected shape's definition.
+    const src = fullShacl || shacl;
+    const normalised = src.replace(/\r\n/g, "\n");
+    // Split on blank lines to isolate statement groups.
+    const blocks = normalised.split(/\n{2,}/).filter((b) => b.trim());
+    const match = blocks.find((b) => {
+      const first = b.trimStart();
+      return first.startsWith(shapeId + " ") || first.startsWith(shapeId + "\n") || first.startsWith(shapeId + "\t");
+    });
+    if (match) {
+      setShacl(match.trim());
+    }
+  }, [fullShacl, shacl]);
+
+  const handleShowAllShapes = useCallback(() => {
+    setSelectedShapeId(null);
+    setShacl(fullShacl);
+  }, [fullShacl]);
 
   const handleValidate = async () => {
     if (!selectedUri || !shacl.trim()) return;
@@ -166,25 +197,45 @@ export function ShaclStudio({ onJumpToNode }: ShaclStudioProps) {
         <section style={cardStyle}>
           <div style={panelHeaderStyle}>
             <h3 style={sectionTitleStyle}>Shape library</h3>
-            <span style={countBadgeStyle}>{shapes.length} shapes</span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={countBadgeStyle}>{shapes.length} shapes</span>
+              {selectedShapeId ? (
+                <button style={smallButtonStyle} onClick={handleShowAllShapes}>View all</button>
+              ) : null}
+            </div>
           </div>
           <div style={shapeListStyle}>
             {groupedShapes.map(([target, items]) => (
               <div key={target} style={shapeGroupStyle}>
                 <div style={shapeTargetStyle}>{target}</div>
-                {items.map((shape) => (
-                  <div key={shape.id} style={shapeRowStyle}>
-                    <FileCode2 size={14} color="#9ee8d7" />
-                    <div>
-                      <div style={{ color: "#ebf3ff", fontWeight: 800 }}>{shape.id}</div>
-                      <div style={mutedStyle}>
-                        {shape.constraint_count} constraints
-                        {shape.constraints.length ? ` · ${shape.constraints.join(", ")}` : ""}
+                {items.map((shape) => {
+                  const isSelected = selectedShapeId === shape.id;
+                  return (
+                    <button
+                      key={shape.id}
+                      style={{
+                        ...shapeRowStyle,
+                        cursor: "pointer",
+                        background: isSelected ? "rgba(124,231,211,0.1)" : "rgba(255,255,255,0.03)",
+                        border: isSelected ? "1px solid rgba(124,231,211,0.35)" : "1px solid rgba(127,208,255,0.08)",
+                        textAlign: "left",
+                        width: "100%",
+                      }}
+                      onClick={() => handleSelectShape(shape.id)}
+                      title="Click to load this shape into the editor"
+                    >
+                      <FileCode2 size={14} color={isSelected ? "#7ce7d3" : "#9ee8d7"} />
+                      <div>
+                        <div style={{ color: "#ebf3ff", fontWeight: 800 }}>{shape.id}</div>
+                        <div style={mutedStyle}>
+                          {shape.constraint_count} constraints
+                          {shape.constraints.length ? ` · ${shape.constraints.join(", ")}` : ""}
+                        </div>
                       </div>
-                    </div>
-                    <span style={violationBadgeStyle}>{shape.violation_count}</span>
-                  </div>
-                ))}
+                      <span style={violationBadgeStyle}>{shape.violation_count}</span>
+                    </button>
+                  );
+                })}
               </div>
             ))}
             {!shapes.length ? <p style={mutedStyle}>No shapes generated yet.</p> : null}
@@ -193,7 +244,9 @@ export function ShaclStudio({ onJumpToNode }: ShaclStudioProps) {
 
         <section style={editorShellStyle}>
           <div style={panelHeaderStyle}>
-            <h3 style={sectionTitleStyle}>Turtle shape editor</h3>
+            <h3 style={sectionTitleStyle}>
+              {selectedShapeId ? selectedShapeId : "Turtle shape editor"}
+            </h3>
             <div style={{ display: "flex", gap: 8 }}>
               <button style={secondaryButtonStyle} disabled={loading} onClick={handleGenerate}><Wand2 size={14} /> Generate strict</button>
               <button style={primaryButtonStyle} disabled={loading || !shacl.trim()} onClick={handleValidate}>

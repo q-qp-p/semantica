@@ -75,6 +75,29 @@ export function AlignmentsTab() {
     return counts;
   }, [alignments]);
 
+  // Pairwise matrix: group alignments by (source_ontology, target_ontology) pair.
+  const matrix = useMemo(() => {
+    function ontologyOfUri(uri: string): string {
+      for (const entry of registry) {
+        if (uri === entry.uri || uri.startsWith(entry.uri + "#") || uri.startsWith(entry.uri + "/")) {
+          return entry.uri;
+        }
+      }
+      const hashIdx = uri.lastIndexOf("#");
+      if (hashIdx > 0) return uri.substring(0, hashIdx);
+      const slashIdx = uri.lastIndexOf("/");
+      return slashIdx > 0 ? uri.substring(0, slashIdx) : uri;
+    }
+    const cells: Map<string, OntologyAlignment[]> = new Map();
+    for (const alignment of alignments) {
+      const key = `${ontologyOfUri(alignment.source_uri)}|||${ontologyOfUri(alignment.target_uri)}`;
+      const bucket = cells.get(key) ?? [];
+      bucket.push(alignment);
+      cells.set(key, bucket);
+    }
+    return { ontologies: registry, cells };
+  }, [registry, alignments]);
+
   const handleSave = useCallback(async () => {
     if (!sourceUri.trim() || !targetUri.trim()) {
       setError("Provide both source and target entity URIs.");
@@ -165,6 +188,61 @@ export function AlignmentsTab() {
         Alignments are stored in server memory and are not persisted across restarts.
         Export your graph or ontology to preserve recorded mappings.
       </div>
+
+      {matrix.ontologies.length >= 2 ? (
+        <section style={cardStyle}>
+          <h3 style={sectionTitleStyle}>Pairwise alignment matrix</h3>
+          <div style={{ overflowX: "auto" }}>
+            <table style={matrixTableStyle}>
+              <thead>
+                <tr>
+                  <th style={matrixCornerStyle} />
+                  {matrix.ontologies.map((col) => (
+                    <th key={col.uri} style={matrixColHeaderStyle}>{col.name}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {matrix.ontologies.map((row) => (
+                  <tr key={row.uri}>
+                    <td style={matrixRowHeaderStyle}>{row.name}</td>
+                    {matrix.ontologies.map((col) => {
+                      const key = `${row.uri}|||${col.uri}`;
+                      const cellItems = matrix.cells.get(key) ?? [];
+                      const isDiag = row.uri === col.uri;
+                      return (
+                        <td key={col.uri} style={{ ...matrixCellStyle, background: isDiag ? "rgba(255,255,255,0.015)" : undefined }}>
+                          {isDiag ? <span style={mutedStyle}>—</span> : cellItems.length ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              {cellItems.map((item) => (
+                                <span
+                                  key={item.id}
+                                  style={{ ...relationBadgeStyle, color: RELATION_COLORS[item.relation], borderColor: `${RELATION_COLORS[item.relation]}44`, cursor: "pointer", fontSize: 9 }}
+                                  title={`${item.source_label} → ${item.target_label} (${Math.round(item.confidence * 100)}%)`}
+                                  onClick={() => {
+                                    setSourceUri(item.source_uri);
+                                    setTargetUri(item.target_uri);
+                                    setRelation(item.relation);
+                                    setConfidence(item.confidence);
+                                    setProvenance(item.provenance ?? "");
+                                  }}
+                                >
+                                  {item.relation.split(":")[1]}
+                                </span>
+                              ))}
+                            </div>
+                          ) : <span style={{ color: "rgba(127,208,255,0.15)", fontSize: 12 }}>·</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ ...mutedStyle, marginTop: 10 }}>Click a relation badge to load it into the editor below.</p>
+        </section>
+      ) : null}
 
       <div style={gridStyle}>
         <section style={cardStyle}>
@@ -321,3 +399,8 @@ const iconButtonStyle: CSSProperties = { width: 34, height: 34, borderRadius: 10
 const mutedStyle: CSSProperties = { margin: 0, color: "#6a7f97", fontSize: 13 };
 const errorStyle: CSSProperties = { padding: 12, borderRadius: 14, color: "#ffb4c2", background: "rgba(255,157,175,0.1)", border: "1px solid rgba(255,157,175,0.18)" };
 const ephemeralBannerStyle: CSSProperties = { padding: "9px 14px", borderRadius: 12, color: "#f2b66d", background: "rgba(242,182,109,0.08)", border: "1px solid rgba(242,182,109,0.22)", fontSize: 12 };
+const matrixTableStyle: CSSProperties = { borderCollapse: "collapse", minWidth: "100%", fontSize: 12 };
+const matrixCornerStyle: CSSProperties = { padding: "8px 12px", borderBottom: "1px solid rgba(127,208,255,0.1)" };
+const matrixColHeaderStyle: CSSProperties = { padding: "8px 12px", color: "#9ee8d7", fontWeight: 900, borderBottom: "1px solid rgba(127,208,255,0.1)", textAlign: "center", whiteSpace: "nowrap" };
+const matrixRowHeaderStyle: CSSProperties = { padding: "8px 12px", color: "#9ee8d7", fontWeight: 900, borderRight: "1px solid rgba(127,208,255,0.1)", whiteSpace: "nowrap" };
+const matrixCellStyle: CSSProperties = { padding: "8px 10px", borderBottom: "1px solid rgba(127,208,255,0.06)", borderRight: "1px solid rgba(127,208,255,0.06)", textAlign: "center", verticalAlign: "middle", minWidth: 100 };

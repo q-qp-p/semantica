@@ -1452,12 +1452,16 @@ export function GraphWorkspace({ externalFocusNodeId, externalFocusToken }: Grap
     if (!graphReady || !graph.hasNode(externalFocusNodeId)) return;
 
     lastExternalFocusTokenRef.current = externalFocusToken;
+    // Set state directly instead of going through focusNode(), which captures
+    // a stale viewMode in its closure. setViewMode is called first so the node
+    // is visible in the full graph before the scene pans to it.
     setViewMode("full");
-    focusNode(externalFocusNodeId);
+    setSelectedNodeId(externalFocusNodeId);
+    setSelectedEdgeId("");
     window.setTimeout(() => {
       sceneRef.current?.focusNode(externalFocusNodeId);
     }, 0);
-  }, [externalFocusNodeId, externalFocusToken, focusNode, graphReady]);
+  }, [externalFocusNodeId, externalFocusToken, graphReady]);
 
   const handleEdgeSelect = useCallback((edgeId: string) => {
     setSelectedEdgeId(edgeId);

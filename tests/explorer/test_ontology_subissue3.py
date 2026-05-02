@@ -215,3 +215,49 @@ def test_alignment_accepts_external_uri(client):
     assert response.status_code == 200
     alignment = response.json()
     assert alignment["target_label"] == "Person"  # derived from URI fragment
+
+
+def test_suggest_alignments_returns_embedding_similarity(client):
+    response = client.post(
+        "/api/ontology/suggest-alignments",
+        json={
+            "source_ontology_uri": "http://example.org/onto-a",
+            "target_ontology_uri": "http://example.org/onto-b",
+            "threshold": 0.20,
+            "limit": 10,
+        },
+    )
+    assert response.status_code == 200
+    suggestions = response.json()
+    assert suggestions
+    # When sklearn is available, embedding_similarity should be populated.
+    top = suggestions[0]
+    assert top["embedding_similarity"] is not None, (
+        "TF-IDF embedding similarity must be returned when sklearn is installed"
+    )
+    # Combined score must be a weighted blend, not purely the label score.
+    assert top["score"] != top["label_similarity"] or top["embedding_similarity"] == top["label_similarity"]
+
+
+def test_shacl_validate_rejects_invalid_turtle_syntax(client):
+    response = client.post(
+        "/api/ontology/shacl/validate",
+        json={
+            "uri": "http://example.org/onto-a",
+            "shacl_turtle": "this is not valid turtle !!!",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_health_alignment_coverage_uses_set_lookup(client):
+    # Create an alignment first so coverage score can be non-zero.
+    client.post("/api/ontology/alignments", json={
+        "source_uri": "http://example.org/onto-a#Person",
+        "target_uri": "http://example.org/onto-b#PersonRecord",
+        "relation": "owl:equivalentClass",
+        "confidence": 0.9,
+    })
+    payload = client.get("/api/ontology/health?uri=http%3A%2F%2Fexample.org%2Fonto-a").json()
+    alignment_dim = next(d for d in payload["dimensions"] if d["key"] == "alignment")
+    assert alignment_dim["score"] > 0.0, "alignment coverage must be non-zero after recording an alignment"
