@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `sort_by` — ranking field before limits are applied; accepts `"confidence"` (default) or `"similarity_score"`. Invalid values raise `ValueError` at construction time.
   - All four options are applied by the new `_apply_result_limits` helper and are respected by both `detect_duplicates()` and `incremental_detect()`.
   - 15 new tests in `TestResultLimiting` covering each option in isolation and in combination.
+  - **Follow-up Qodo review fixes** (by @KaifAhmad1):
+    - `top_k_per_entity` now uses OR semantics — a candidate is kept if *either* entity is still under quota, preventing high-quality pairs from being silently dropped when a popular counterpart saturates its limit.
+    - `max_results` and `top_k_per_entity` now validated at construction time; negative or non-integer values raise `ValueError`.
+    - `min_similarity` now validated in `[0.0, 1.0]` at construction; out-of-range values raise `ValueError`.
+    - Added `_normalize_entity_id` helper (always returns `str`) used consistently in both `_apply_result_limits` and `_build_duplicate_groups`, eliminating `int` vs `str` ID key mismatches.
+    - Updated `detect_duplicates` and `incremental_detect` docstrings to reflect the configurable `sort_by` field.
 
 ### Fixed
 
@@ -73,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supported `method` values: `"all"` (default, comprehensive), `"value"`, `"property"`, `"type"`, `"relationship"`, `"temporal"`, `"logical"`, `"entity"`. Unknown values raise `ValueError`.
   - Fixed `method="relationship"` silently defaulting `relationships` to the entities list, which caused entity dicts to be iterated as relationship dicts producing silent wrong results (`None_None_None` keys). Now defaults to `[]` with dict normalization.
   - Removed unreachable dead code (`for field_name in fields_to_check` loop after `try/except raise`) in `detect_entity_conflicts`.
+  - **Follow-up Qodo review fix** — hardened `method="relationship"` normalization: when `relationships` kwarg is a dict whose `"relationships"` value is itself a non-list (or the key is absent), the value is now always wrapped in a list before being passed to `detect_relationship_conflicts`, guaranteeing `List[Dict]` input in all cases.
 
 - **Fix: `semantica[all]` installation fails on Windows due to `faiss-gpu` dependency** (issue #532, PR #utlis, by @KaifAhmad1):
   - `[all]` bundled the `[gpu]` extra (`faiss-gpu>=1.7.0`, `cupy>=10.0.0`), which has no Windows builds, causing `pip install "semantica[all]"` to fail with `No matching distribution found for faiss-gpu>=1.7.0`.
