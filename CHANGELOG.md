@@ -57,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Fix: Progress tracker crashes with `UnicodeEncodeError` on Windows cp1252 consoles** (issue #531, PR #utlis, by @KaifAhmad1):
+  - `ConsoleProgressDisplay.update()` had 5 direct `sys.stdout.write()` calls that bypassed the existing `_safe_write()` guard, causing `UnicodeEncodeError` when emoji characters (`🧠`, `📊`) were written to cp1252-encoded consoles during any progress-tracked operation.
+  - All 5 calls replaced with `self._safe_write()`, which catches `UnicodeEncodeError` and re-encodes output with `errors="replace"` so progress output never crashes the process.
+  - Added `TestProgressTrackerEncoding` regression class (3 tests) covering `_safe_write` safety, pipeline header write, and auto emoji-disable on cp1252 stdout.
+
 - **Fix: Break circular import in `semantic_extract`; address Qodo review bug** (issue #528, PR #536, by @ZohaibHassan16, review fixes by @KaifAhmad1):
   - **Root cause** — `ner_extractor.py` imported `get_entity_method` from `methods.py`, while `methods.py` imported `Entity` from `ner_extractor.py`, creating a circular import that raised `ImportError: cannot import name 'Entity' from partially initialized module` on any import of `semantica.semantic_extract`.
   - `semantica/semantic_extract/types.py` (new) — shared `Entity`, `Relation`, and `Triplet` dataclasses extracted into a dedicated module that neither side of the old cycle imports, so both `ner_extractor`, `relation_extractor`, `triplet_extractor`, and `methods` can import from it freely.
