@@ -147,14 +147,28 @@ class DuplicateDetector:
         self.confidence_threshold = confidence_threshold
         self.use_clustering = use_clustering
 
-        # Result limiting / ranking options
-        self.max_results = max_results
-        self.top_k_per_entity = top_k_per_entity
-        self.min_similarity = min_similarity
+        # Result limiting / ranking options — validate at construction time
+        if max_results is not None and (not isinstance(max_results, int) or max_results < 0):
+            raise ValueError(
+                f"max_results must be None or a non-negative int, got {max_results!r}"
+            )
+        if top_k_per_entity is not None and (
+            not isinstance(top_k_per_entity, int) or top_k_per_entity < 0
+        ):
+            raise ValueError(
+                f"top_k_per_entity must be None or a non-negative int, got {top_k_per_entity!r}"
+            )
+        if min_similarity is not None and not (0.0 <= min_similarity <= 1.0):
+            raise ValueError(
+                f"min_similarity must be None or a float in [0.0, 1.0], got {min_similarity!r}"
+            )
         if sort_by not in ("confidence", "similarity_score"):
             raise ValueError(
                 f"sort_by must be 'confidence' or 'similarity_score', got {sort_by!r}"
             )
+        self.max_results = max_results
+        self.top_k_per_entity = top_k_per_entity
+        self.min_similarity = min_similarity
         self.sort_by = sort_by
 
         # Initialize progress tracker and ensure it's enabled
@@ -179,8 +193,10 @@ class DuplicateDetector:
         Detect duplicate entities from a list.
 
         This method compares all pairs of entities and identifies duplicates based
-        on similarity scores and confidence thresholds. Returns candidates sorted
-        by confidence (highest first).
+        on similarity scores and confidence thresholds. Results are filtered and
+        ranked by ``_apply_result_limits`` using the instance ``sort_by`` field
+        (default: ``"confidence"``), then capped by ``top_k_per_entity`` and
+        ``max_results``.
 
         Args:
             entities: List of entity dictionaries to check for duplicates.
@@ -189,8 +205,9 @@ class DuplicateDetector:
             **options: Additional detection options passed to similarity calculator
 
         Returns:
-            List of DuplicateCandidate objects, sorted by confidence (highest first).
-            Each candidate contains:
+            List of DuplicateCandidate objects sorted by the ``sort_by`` field
+            (highest first, default ``"confidence"``), capped by ``top_k_per_entity``
+            and ``max_results``. Each candidate contains:
                 - entity1, entity2: The duplicate entity pair
                 - similarity_score: Similarity score (0.0 to 1.0)
                 - confidence: Confidence score (0.0 to 1.0)
@@ -547,7 +564,9 @@ class DuplicateDetector:
 
         Returns:
             List of DuplicateCandidate objects representing duplicates between
-            new and existing entities, sorted by confidence (highest first).
+            new and existing entities, sorted by the ``sort_by`` field (highest
+            first, default ``"confidence"``), capped by ``top_k_per_entity`` and
+            ``max_results``.
 
         Example:
             >>> new_entities = [{"id": "3", "name": "Apple Corp"}]
@@ -668,19 +687,20 @@ class DuplicateDetector:
         # 2. Sort descending by the chosen field
         candidates.sort(key=lambda c: getattr(c, self.sort_by), reverse=True)
 
-        # 3. top_k_per_entity
+        # 3. top_k_per_entity — keep a candidate if *either* entity is still under
+        #    quota; once an entity reaches k it no longer sponsors new candidates.
         if self.top_k_per_entity is not None:
             entity_counts: Dict[str, int] = {}
             kept: List[DuplicateCandidate] = []
             for c in candidates:
-                id1 = self._get_entity_value(c.entity1, "id") or id(c.entity1)
-                id2 = self._get_entity_value(c.entity2, "id") or id(c.entity2)
-                count1 = entity_counts.get(str(id1), 0)
-                count2 = entity_counts.get(str(id2), 0)
-                if count1 < self.top_k_per_entity and count2 < self.top_k_per_entity:
+                nid1 = self._normalize_entity_id(c.entity1)
+                nid2 = self._normalize_entity_id(c.entity2)
+                count1 = entity_counts.get(nid1, 0)
+                count2 = entity_counts.get(nid2, 0)
+                if count1 < self.top_k_per_entity or count2 < self.top_k_per_entity:
                     kept.append(c)
-                    entity_counts[str(id1)] = count1 + 1
-                    entity_counts[str(id2)] = count2 + 1
+                    entity_counts[nid1] = count1 + 1
+                    entity_counts[nid2] = count2 + 1
             candidates = kept
 
         # 4. max_results global cap
@@ -688,6 +708,13 @@ class DuplicateDetector:
             candidates = candidates[: self.max_results]
 
         return candidates
+
+    def _normalize_entity_id(self, entity: Any) -> str:
+        """Return a stable string key for an entity, used as a dict key throughout the class."""
+        raw = self._get_entity_value(entity, "id")
+        if raw is None:
+            raw = id(entity)
+        return str(raw)
 
     def _get_entity_value(self, entity: Any, key: str, default: Any = None) -> Any:
         """Get value from entity dictionary or object safely."""
@@ -784,12 +811,8 @@ class DuplicateDetector:
         groups = []
 
         for candidate in candidates:
-            entity1_id = self._get_entity_value(candidate.entity1, "id") or id(
-                candidate.entity1
-            )
-            entity2_id = self._get_entity_value(candidate.entity2, "id") or id(
-                candidate.entity2
-            )
+            entity1_id = self._normalize_entity_id(candidate.entity1)
+            entity2_id = self._normalize_entity_id(candidate.entity2)
 
             group1 = entity_to_group.get(entity1_id)
             group2 = entity_to_group.get(entity2_id)

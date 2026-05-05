@@ -334,24 +334,26 @@ class TestResultLimiting(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_top_k_per_entity_k1(self):
+        # OR semantics: keep if EITHER entity is under quota.
+        # A popular entity can appear > k times (each new partner brings it back).
+        # Invariant: no (entity1, entity2) pair is returned more than once.
         k = 1
         results = self._base_detector(top_k_per_entity=k).detect_duplicates(self.entities)
-        counts: Dict[str, int] = {}
-        for c in results:
-            for eid in (c.entity1["id"], c.entity2["id"]):
-                counts[eid] = counts.get(eid, 0) + 1
-        for eid, count in counts.items():
-            self.assertLessEqual(count, k, f"Entity {eid!r} appears {count} times, expected <= {k}")
+        pairs = [(c.entity1["id"], c.entity2["id"]) for c in results]
+        self.assertEqual(len(pairs), len(set(pairs)), "No duplicate pairs should appear")
+        # OR gives >= results than AND — at least 1 result when matches exist
+        and_results = self._base_detector().detect_duplicates(self.entities)
+        if and_results:
+            self.assertGreater(len(results), 0)
 
     def test_top_k_per_entity_k2(self):
+        # Same OR semantics: no pair appears twice; result is bounded below by k=1 count
         k = 2
         results = self._base_detector(top_k_per_entity=k).detect_duplicates(self.entities)
-        counts: Dict[str, int] = {}
-        for c in results:
-            for eid in (c.entity1["id"], c.entity2["id"]):
-                counts[eid] = counts.get(eid, 0) + 1
-        for eid, count in counts.items():
-            self.assertLessEqual(count, k)
+        pairs = [(c.entity1["id"], c.entity2["id"]) for c in results]
+        self.assertEqual(len(pairs), len(set(pairs)), "No duplicate pairs should appear")
+        k1_results = self._base_detector(top_k_per_entity=1).detect_duplicates(self.entities)
+        self.assertGreaterEqual(len(results), len(k1_results))
 
     def test_top_k_per_entity_large_k_same_as_none(self):
         uncapped = self._base_detector().detect_duplicates(self.entities)
@@ -427,6 +429,73 @@ class TestResultLimiting(unittest.TestCase):
         self.assertIn("bogus_field", str(ctx.exception))
 
     # ------------------------------------------------------------------
+    # Input validation (bug_002 / bug_003)
+    # ------------------------------------------------------------------
+
+    def test_max_results_negative_raises(self):
+        with self.assertRaises(ValueError):
+            self._base_detector(max_results=-1)
+
+    def test_max_results_float_raises(self):
+        with self.assertRaises(ValueError):
+            self._base_detector(max_results=1.5)
+
+    def test_top_k_per_entity_negative_raises(self):
+        with self.assertRaises(ValueError):
+            self._base_detector(top_k_per_entity=-1)
+
+    def test_top_k_per_entity_float_raises(self):
+        with self.assertRaises(ValueError):
+            self._base_detector(top_k_per_entity=2.5)
+
+    def test_min_similarity_above_1_raises(self):
+        with self.assertRaises(ValueError):
+            self._base_detector(min_similarity=1.1)
+
+    def test_min_similarity_below_0_raises(self):
+        with self.assertRaises(ValueError):
+            self._base_detector(min_similarity=-0.1)
+
+    def test_max_results_zero_is_valid(self):
+        # 0 is a non-negative int — must not raise
+        detector = self._base_detector(max_results=0)
+        self.assertEqual(detector.detect_duplicates(self.entities), [])
+
+    def test_top_k_per_entity_zero_is_valid(self):
+        detector = self._base_detector(top_k_per_entity=0)
+        self.assertEqual(detector.detect_duplicates(self.entities), [])
+
+    def test_min_similarity_boundary_0_valid(self):
+        self._base_detector(min_similarity=0.0)  # must not raise
+
+    def test_min_similarity_boundary_1_valid(self):
+        self._base_detector(min_similarity=1.0)  # must not raise
+
+    # ------------------------------------------------------------------
+    # top_k_per_entity OR semantics (bug_001)
+    # ------------------------------------------------------------------
+
+    def test_top_k_or_semantics_keeps_candidate_if_either_under_quota(self):
+        """A high-ranked candidate must survive even if one of its entities hit k,
+        as long as the other entity is still under quota."""
+        # With k=1 and OR semantics, every entity can appear in AT LEAST one
+        # candidate. Verify that more candidates survive than would under AND.
+        k = 1
+        or_results = self._base_detector(top_k_per_entity=k).detect_duplicates(self.entities)
+        # Each entity should appear at least once — no entity completely starved
+        seen_ids: set = set()
+        for c in or_results:
+            seen_ids.add(c.entity1["id"])
+            seen_ids.add(c.entity2["id"])
+        # Entities that have at least one match above threshold must appear
+        all_ids_in_any_pair: set = set()
+        uncapped = self._base_detector().detect_duplicates(self.entities)
+        for c in uncapped:
+            all_ids_in_any_pair.add(c.entity1["id"])
+            all_ids_in_any_pair.add(c.entity2["id"])
+        self.assertEqual(seen_ids, all_ids_in_any_pair)
+
+    # ------------------------------------------------------------------
     # Combined options
     # ------------------------------------------------------------------
 
@@ -440,14 +509,12 @@ class TestResultLimiting(unittest.TestCase):
     def test_min_similarity_and_top_k_combined(self):
         floor, k = 0.5, 1
         results = self._base_detector(min_similarity=floor, top_k_per_entity=k).detect_duplicates(self.entities)
+        # min_similarity floor still applies
         for c in results:
             self.assertGreaterEqual(c.similarity_score, floor)
-        counts: Dict[str, int] = {}
-        for c in results:
-            for eid in (c.entity1["id"], c.entity2["id"]):
-                counts[eid] = counts.get(eid, 0) + 1
-        for count in counts.values():
-            self.assertLessEqual(count, k)
+        # OR semantics: no pair duplicated
+        pairs = [(c.entity1["id"], c.entity2["id"]) for c in results]
+        self.assertEqual(len(pairs), len(set(pairs)))
 
     def test_all_four_options_combined(self):
         results = self._base_detector(
@@ -493,12 +560,9 @@ class TestResultLimiting(unittest.TestCase):
         new_e, existing = self.entities[:3], self.entities[3:]
         k = 1
         results = self._base_detector(top_k_per_entity=k).incremental_detect(new_e, existing)
-        counts: Dict[str, int] = {}
-        for c in results:
-            for eid in (c.entity1["id"], c.entity2["id"]):
-                counts[eid] = counts.get(eid, 0) + 1
-        for count in counts.values():
-            self.assertLessEqual(count, k)
+        # OR semantics: no pair appears twice
+        pairs = [(c.entity1["id"], c.entity2["id"]) for c in results]
+        self.assertEqual(len(pairs), len(set(pairs)))
 
     def test_incremental_detect_empty_new_entities(self):
         detector = self._base_detector(max_results=5)
