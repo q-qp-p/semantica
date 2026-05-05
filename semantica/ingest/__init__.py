@@ -222,14 +222,10 @@ def __getattr__(name: str) -> Any:
     module_name, attr_name = _LAZY_EXPORTS[name]
     try:
         module = importlib.import_module(module_name, __name__)
-    except ImportError as exc:
+    except ModuleNotFoundError as exc:
         message = _OPTIONAL_DEPENDENCY_MESSAGES.get(module_name)
         missing_name = getattr(exc, "name", None)
-        missing_dependency = missing_name in {"git", "bs4"} or any(
-            f"No module named '{dependency}'" in str(exc)
-            for dependency in ("git", "bs4")
-        )
-        if message and missing_dependency:
+        if message and missing_name in {"git", "bs4"}:
             raise ImportError(message) from exc
         raise
 

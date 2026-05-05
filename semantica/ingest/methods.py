@@ -160,12 +160,9 @@ def _missing_optional_dependency(feature: str, package: str) -> ConfigurationErr
     )
 
 
-def _is_missing_dependency(exc: ImportError, *dependency_names: str) -> bool:
+def _is_missing_dependency(exc: ModuleNotFoundError, *dependency_names: str) -> bool:
     missing_name = getattr(exc, "name", None)
-    return missing_name in dependency_names or any(
-        f"No module named '{dependency}'" in str(exc)
-        for dependency in dependency_names
-    )
+    return missing_name in dependency_names
 
 
 def ingest_file(
@@ -270,7 +267,7 @@ def ingest_web(
     try:
         try:
             from .web_ingestor import WebIngestor
-        except ImportError as exc:
+        except ModuleNotFoundError as exc:
             if _is_missing_dependency(exc, "bs4"):
                 raise _missing_optional_dependency(
                     "Web ingestion",
@@ -297,6 +294,8 @@ def ingest_web(
             # Default: try as URL
             return ingestor.ingest_url(source, **kwargs)
 
+    except ConfigurationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to ingest web: {e}")
         raise
@@ -339,7 +338,7 @@ def ingest_feed(
     try:
         try:
             from .feed_ingestor import FeedIngestor
-        except ImportError as exc:
+        except ModuleNotFoundError as exc:
             if _is_missing_dependency(exc, "bs4"):
                 raise _missing_optional_dependency(
                     "Feed ingestion",
@@ -361,6 +360,8 @@ def ingest_feed(
             else:
                 return ingestor.ingest_feed(source, **kwargs)
 
+    except ConfigurationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to ingest feed: {e}")
         raise
@@ -480,7 +481,7 @@ def ingest_repository(
     try:
         try:
             from .repo_ingestor import RepoIngestor
-        except ImportError as exc:
+        except ModuleNotFoundError as exc:
             if _is_missing_dependency(exc, "git"):
                 raise _missing_optional_dependency("Repository ingestion", "GitPython") from exc
             raise
@@ -502,6 +503,8 @@ def ingest_repository(
             # Default: ingest repository
             return ingestor.ingest_repository(source, **kwargs)
 
+    except ConfigurationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to ingest repository: {e}")
         raise
@@ -545,7 +548,7 @@ def ingest_email(
     try:
         try:
             from .email_ingestor import EmailIngestor
-        except ImportError as exc:
+        except ModuleNotFoundError as exc:
             if _is_missing_dependency(exc, "bs4"):
                 raise _missing_optional_dependency(
                     "Email ingestion",
@@ -581,6 +584,8 @@ def ingest_email(
         else:
             raise ProcessingError(f"Unknown email method: {method}")
 
+    except ConfigurationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to ingest email: {e}")
         raise
