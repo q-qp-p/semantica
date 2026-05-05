@@ -139,24 +139,30 @@ Example Usage:
     >>> content = ingest_web("https://example.com", method="url")
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from ..utils.exceptions import ConfigurationError, ProcessingError
 from ..utils.logging import get_logger
 from .config import ingest_config
-from .db_ingestor import DBIngestor, TableData
-from .email_ingestor import EmailData, EmailIngestor
-from .feed_ingestor import FeedData, FeedIngestor
 from .file_ingestor import FileIngestor, FileObject
-from .mcp_ingestor import MCPData, MCPIngestor
-from .ontology_ingestor import OntologyData, OntologyIngestor
 from .registry import method_registry
-from .repo_ingestor import RepoIngestor
-from .stream_ingestor import StreamIngestor, StreamProcessor
-from .web_ingestor import WebContent, WebIngestor
 
 logger = get_logger("ingest_methods")
+
+
+def _missing_optional_dependency(feature: str, package: str) -> ConfigurationError:
+    return ConfigurationError(
+        f"{feature} requires optional dependency '{package}'. "
+        f"Install it before using this ingestion backend."
+    )
+
+
+def _is_missing_dependency(exc: ModuleNotFoundError, *dependency_names: str) -> bool:
+    missing_name = getattr(exc, "name", None)
+    return missing_name in dependency_names
 
 
 def ingest_file(
@@ -259,6 +265,16 @@ def ingest_web(
             )
 
     try:
+        try:
+            from .web_ingestor import WebIngestor
+        except ModuleNotFoundError as exc:
+            if _is_missing_dependency(exc, "bs4"):
+                raise _missing_optional_dependency(
+                    "Web ingestion",
+                    "beautifulsoup4",
+                ) from exc
+            raise
+
         # Get config
         config = ingest_config.get_method_config("web")
         config.update(kwargs)
@@ -278,6 +294,8 @@ def ingest_web(
             # Default: try as URL
             return ingestor.ingest_url(source, **kwargs)
 
+    except ConfigurationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to ingest web: {e}")
         raise
@@ -318,6 +336,16 @@ def ingest_feed(
             )
 
     try:
+        try:
+            from .feed_ingestor import FeedIngestor
+        except ModuleNotFoundError as exc:
+            if _is_missing_dependency(exc, "bs4"):
+                raise _missing_optional_dependency(
+                    "Feed ingestion",
+                    "beautifulsoup4",
+                ) from exc
+            raise
+
         # Get config
         config = ingest_config.get_method_config("feed")
         config.update(kwargs)
@@ -332,6 +360,8 @@ def ingest_feed(
             else:
                 return ingestor.ingest_feed(source, **kwargs)
 
+    except ConfigurationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to ingest feed: {e}")
         raise
@@ -375,6 +405,8 @@ def ingest_stream(
             )
 
     try:
+        from .stream_ingestor import StreamIngestor
+
         # Get config
         config = ingest_config.get_method_config("stream")
         config.update(kwargs)
@@ -447,6 +479,13 @@ def ingest_repository(
             )
 
     try:
+        try:
+            from .repo_ingestor import RepoIngestor
+        except ModuleNotFoundError as exc:
+            if _is_missing_dependency(exc, "git"):
+                raise _missing_optional_dependency("Repository ingestion", "GitPython") from exc
+            raise
+
         # Get config
         config = ingest_config.get_method_config("repo")
         config.update(kwargs)
@@ -464,6 +503,8 @@ def ingest_repository(
             # Default: ingest repository
             return ingestor.ingest_repository(source, **kwargs)
 
+    except ConfigurationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to ingest repository: {e}")
         raise
@@ -505,6 +546,16 @@ def ingest_email(
             )
 
     try:
+        try:
+            from .email_ingestor import EmailIngestor
+        except ModuleNotFoundError as exc:
+            if _is_missing_dependency(exc, "bs4"):
+                raise _missing_optional_dependency(
+                    "Email ingestion",
+                    "beautifulsoup4",
+                ) from exc
+            raise
+
         # Get config
         config = ingest_config.get_method_config("email")
         config.update(kwargs)
@@ -533,6 +584,8 @@ def ingest_email(
         else:
             raise ProcessingError(f"Unknown email method: {method}")
 
+    except ConfigurationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to ingest email: {e}")
         raise
@@ -572,6 +625,8 @@ def ingest_ontology(
             )
 
     try:
+        from .ontology_ingestor import OntologyIngestor
+
         # Get config
         config = ingest_config.get_method_config("ontology")
         config.update(kwargs)
@@ -636,6 +691,8 @@ def ingest_database(
                 )
 
     try:
+        from .db_ingestor import DBIngestor
+
         # Get config
         config = ingest_config.get_method_config("db")
         config.update(kwargs)
@@ -728,6 +785,8 @@ def ingest_mcp(
             )
 
     try:
+        from .mcp_ingestor import MCPIngestor
+
         # Get config
         config = ingest_config.get_method_config("mcp")
         config.update(kwargs)
