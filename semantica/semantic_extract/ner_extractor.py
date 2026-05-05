@@ -70,27 +70,15 @@ Author: Semantica Contributors
 License: MIT
 """
 
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..utils.exceptions import ProcessingError
 from ..utils.helpers import safe_import
 from ..utils.logging import get_logger
 from ..utils.progress_tracker import get_progress_tracker
+from .types import Entity
 
 spacy, SPACY_AVAILABLE = safe_import("spacy")
-
-
-@dataclass
-class Entity:
-    """Entity representation."""
-
-    text: str
-    label: str
-    start_char: int
-    end_char: int
-    confidence: float = 1.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class NERExtractor:
