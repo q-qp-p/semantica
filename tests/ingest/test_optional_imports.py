@@ -23,7 +23,9 @@ class OptionalDependencyBlocker(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         root_name = fullname.split(".", 1)[0]
         if root_name in BLOCKED_MODULES:
-            raise ModuleNotFoundError(f"No module named '{{root_name}}'")
+            err = ModuleNotFoundError(f"No module named '{{root_name}}'")
+            err.name = root_name
+            raise err
         return None
 
 
