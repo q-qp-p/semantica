@@ -24,53 +24,7 @@
 
 ---
 
-## 🌍 Languages
-
-<p>
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=en">🇺🇸 English</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=de">🇩🇪 Deutsch</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=fr">🇫🇷 Français</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=es">🇪🇸 Español</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=it">🇮🇹 Italiano</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=pt">🇵🇹 Português</a>
-</p>
-
-<p>
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=nl">🇳🇱 Nederlands</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=pl">🇵🇱 Polski</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=cs">🇨🇿 Čeština</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=sv">🇸🇪 Svenska</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=da">🇩🇰 Dansk</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=fi">🇫🇮 Suomi</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=no">🇳🇴 Norsk</a>
-</p>
-
-<p>
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=ro">🇷🇴 Română</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=hu">🇭🇺 Magyar</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=el">🇬🇷 Ελληνικά</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=tr">🇹🇷 Türkçe</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=ru">🇷🇺 Русский</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=uk">🇺🇦 Українська</a>
-</p>
-
-<p>
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=ar">🇸🇦 العربية</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=fa">🇮🇷 فارسی</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=hi">🇮🇳 हिन्दी</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=bn">🇧🇩 বাংলা</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=ta">🇮🇳 தமிழ்</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=te">🇮🇳 తెలుగు</a>
-</p>
-
-<p>
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=id">🇮🇩 Bahasa Indonesia</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=vi">🇻🇳 Tiếng Việt</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=th">🇹🇭 ไทย</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=zh">🇨🇳 中文</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=ja">🇯🇵 日本語</a> •
-  <a href="https://readme-i18n.com/Hawksight-AI/semantica?lang=ko">🇰🇷 한국어</a>
-</p>
+🌍 [🇺🇸 EN](https://readme-i18n.com/Hawksight-AI/semantica?lang=en) · [🇩🇪 DE](https://readme-i18n.com/Hawksight-AI/semantica?lang=de) · [🇫🇷 FR](https://readme-i18n.com/Hawksight-AI/semantica?lang=fr) · [🇪🇸 ES](https://readme-i18n.com/Hawksight-AI/semantica?lang=es) · [🇮🇹 IT](https://readme-i18n.com/Hawksight-AI/semantica?lang=it) · [🇵🇹 PT](https://readme-i18n.com/Hawksight-AI/semantica?lang=pt) · [🇳🇱 NL](https://readme-i18n.com/Hawksight-AI/semantica?lang=nl) · [🇵🇱 PL](https://readme-i18n.com/Hawksight-AI/semantica?lang=pl) · [🇨🇿 CS](https://readme-i18n.com/Hawksight-AI/semantica?lang=cs) · [🇸🇪 SV](https://readme-i18n.com/Hawksight-AI/semantica?lang=sv) · [🇩🇰 DA](https://readme-i18n.com/Hawksight-AI/semantica?lang=da) · [🇫🇮 FI](https://readme-i18n.com/Hawksight-AI/semantica?lang=fi) · [🇳🇴 NO](https://readme-i18n.com/Hawksight-AI/semantica?lang=no) · [🇷🇴 RO](https://readme-i18n.com/Hawksight-AI/semantica?lang=ro) · [🇭🇺 HU](https://readme-i18n.com/Hawksight-AI/semantica?lang=hu) · [🇬🇷 EL](https://readme-i18n.com/Hawksight-AI/semantica?lang=el) · [🇹🇷 TR](https://readme-i18n.com/Hawksight-AI/semantica?lang=tr) · [🇷🇺 RU](https://readme-i18n.com/Hawksight-AI/semantica?lang=ru) · [🇺🇦 UK](https://readme-i18n.com/Hawksight-AI/semantica?lang=uk) · [🇸🇦 AR](https://readme-i18n.com/Hawksight-AI/semantica?lang=ar) · [🇮🇷 FA](https://readme-i18n.com/Hawksight-AI/semantica?lang=fa) · [🇮🇳 HI](https://readme-i18n.com/Hawksight-AI/semantica?lang=hi) · [🇧🇩 BN](https://readme-i18n.com/Hawksight-AI/semantica?lang=bn) · [🇮🇩 ID](https://readme-i18n.com/Hawksight-AI/semantica?lang=id) · [🇻🇳 VI](https://readme-i18n.com/Hawksight-AI/semantica?lang=vi) · [🇹🇭 TH](https://readme-i18n.com/Hawksight-AI/semantica?lang=th) · [🇨🇳 ZH](https://readme-i18n.com/Hawksight-AI/semantica?lang=zh) · [🇯🇵 JA](https://readme-i18n.com/Hawksight-AI/semantica?lang=ja) · [🇰🇷 KO](https://readme-i18n.com/Hawksight-AI/semantica?lang=ko)
 
 </div>
 
