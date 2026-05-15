@@ -109,6 +109,12 @@ class NERExtractor:
                 - huggingface_model: HuggingFace model name
                 - provider: LLM provider (for LLM method)
                 - llm_model: LLM model name
+                - base_url: Custom base URL for OpenAI-compatible endpoints
+                    (e.g. ``"https://my-gateway/v1"``).  When set, the
+                    provider automatically switches to ``Mode.JSON`` so that
+                    third-party servers (Qwen, LLaMA gateways, etc.) that do
+                    not implement the full function-calling protocol still
+                    return correctly structured results.
                 - device: Device for HuggingFace models ("cuda" or "cpu")
                 - min_confidence: Minimum confidence threshold
                 - ensemble_voting: Enable ensemble voting (default: False)
@@ -423,7 +429,9 @@ class NERExtractor:
                             return filtered
 
                 except Exception as e:
-                    self.logger.warning(f"Method {method_name} failed: {e}")
+                    self.logger.warning(
+                        "Method %s failed: %s", method_name, e, exc_info=True
+                    )
                     continue
 
             # Ensemble voting if enabled
