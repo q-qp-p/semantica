@@ -160,7 +160,7 @@ test("summarizeDistanceBuckets reports local rings and outside count", () => {
     anchor: 1,
     oneHop: 1,
     twoHop: 1,
-    threeHop: 1,
+    threeHopPlus: 1,
     outside: 2,
   });
 });
@@ -193,11 +193,11 @@ test("buildHeatmapRenderSnapshot caps and deterministically samples large rings"
   assert.equal(firstSnapshot.ringCounts.anchor, 1);
   assert.equal(firstSnapshot.ringCounts.oneHop, 130);
   assert.equal(firstSnapshot.ringCounts.twoHop, 700);
-  assert.equal(firstSnapshot.ringCounts.threeHop, 950);
+  assert.equal(firstSnapshot.ringCounts.threeHopPlus, 950);
   assert.equal(firstSnapshot.renderedRingCounts.anchor, 1);
   assert.equal(firstSnapshot.renderedRingCounts.oneHop, 120);
   assert.equal(firstSnapshot.renderedRingCounts.twoHop, 650);
-  assert.equal(firstSnapshot.renderedRingCounts.threeHop, 900);
+  assert.equal(firstSnapshot.renderedRingCounts.threeHopPlus, 900);
   assert.equal(firstSnapshot.saturationMode, "sampled");
   assert.deepEqual(firstSnapshot.visibleNodeIds, secondSnapshot.visibleNodeIds);
   assert.ok(firstSnapshot.visibleNodeIds.includes("anchor"));
@@ -233,7 +233,7 @@ test("resolveDistanceNodeStyle applies readable heatmap rings only when ready", 
       anchor: 1,
       oneHop: 1,
       twoHop: 1,
-      threeHop: 1,
+      threeHopPlus: 1,
       outside: 1,
     },
   });
@@ -268,7 +268,7 @@ test("resolveDistanceNodeStyle compresses saturated heatmap far rings", () => {
       anchor: 1,
       oneHop: 32,
       twoHop: 3350,
-      threeHop: 7412,
+      threeHopPlus: 7412,
       outside: 3280,
     },
   });
@@ -295,14 +295,14 @@ test("resolveDistanceNodeStyle mutes unsampled heatmap nodes instead of coloring
       anchor: 1,
       oneHop: 0,
       twoHop: 2,
-      threeHop: 0,
+      threeHopPlus: 0,
       outside: 0,
     },
     heatmapRenderedRingCounts: {
       anchor: 1,
       oneHop: 0,
       twoHop: 1,
-      threeHop: 0,
+      threeHopPlus: 0,
       outside: 0,
     },
     heatmapSaturationMode: "sampled",

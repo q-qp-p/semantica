@@ -286,7 +286,7 @@ export function AlignmentsTab() {
             </div>
           </div>
           <button style={primaryButtonStyle} disabled={busy} onClick={handleSave}>
-            {busy ? <Loader2 size={14} className="spin" /> : <GitMerge size={14} />}
+            {busy ? <Loader2 size={14} className="ws-spin" /> : <GitMerge size={14} />}
             Save alignment
           </button>
         </section>

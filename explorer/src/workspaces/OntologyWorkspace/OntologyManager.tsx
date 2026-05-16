@@ -5,7 +5,6 @@ import {
   BookOpen,
   CheckCircle2,
   ExternalLink,
-  GitMerge,
   Layers,
   Loader2,
   Plus,

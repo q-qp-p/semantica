@@ -102,11 +102,14 @@ export function DecisionWorkspace() {
     fetch("/api/decisions", { signal: ctrl.signal })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((data) => {
+        if (ctrl.signal.aborted) return;
         setDecisions(data);
         if (data.length > 0) void loadChain(data[0]);
       })
       .catch((e) => { if (e?.name !== "AbortError") console.error(e); })
-      .finally(() => setListLoading(false));
+      .finally(() => {
+        if (!ctrl.signal.aborted) setListLoading(false);
+      });
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -254,7 +254,7 @@ export function ShaclStudio({ onJumpToNode }: ShaclStudioProps) {
             <div style={{ display: "flex", gap: 8 }}>
               <button style={secondaryButtonStyle} disabled={loading} onClick={handleGenerate}><Wand2 size={14} /> Generate strict</button>
               <button style={primaryButtonStyle} disabled={loading || !shacl.trim()} onClick={handleValidate}>
-                {loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                {loading ? <Loader2 size={14} className="ws-spin" /> : <Play size={14} />}
                 Validate
               </button>
             </div>

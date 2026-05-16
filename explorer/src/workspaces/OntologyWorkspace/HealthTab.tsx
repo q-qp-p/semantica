@@ -82,7 +82,7 @@ export function HealthTab({ onFixInEditor }: HealthTabProps) {
       {error ? <div style={errorStyle}>{error}</div> : null}
 
       {loading ? (
-        <div style={loadingStyle}><Loader2 size={18} className="spin" /> Computing health dashboard...</div>
+        <div style={loadingStyle}><Loader2 size={18} className="ws-spin" /> Computing health dashboard...</div>
       ) : health ? (
         <>
           <section style={{ ...scoreGridStyle, gridTemplateColumns: `220px repeat(${health.dimensions.length}, minmax(180px, 1fr))` }}>
