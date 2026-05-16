@@ -63,11 +63,6 @@ export function AlignmentsTab() {
       setAlignments(alignmentResult.value);
     }
 
-    // If both failed the backend is unreachable — show a soft warning so the
-    // user knows data is missing (not just that the registry is empty).
-    if (registryResult.status === "rejected" && alignmentResult.status === "rejected") {
-      setError("Backend unavailable — connect the server to load ontologies and alignments.");
-    }
   }, []);
 
   useEffect(() => {

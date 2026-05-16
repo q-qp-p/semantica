@@ -259,14 +259,9 @@ export function OntologyManager() {
       if (res.ok) {
         setEntries(await res.json());
       } else {
-        // Non-OK response — show empty state with a soft warning (not a blocking error)
         setEntries([]);
-        if (res.status !== 404) {
-          flashMsg("err", `Registry unavailable (HTTP ${res.status}) — connect the backend to load ontologies`);
-        }
       }
     } catch {
-      // Network error — backend not running; show empty state silently
       setEntries([]);
     } finally {
       setLoading(false);
