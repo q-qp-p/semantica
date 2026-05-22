@@ -1,13 +1,6 @@
 name: Semantica Performance Suite
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - 'requirements-docs.txt'
-      - '**/*.md'
   workflow_dispatch:
 
 permissions:
