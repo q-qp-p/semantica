@@ -34,15 +34,15 @@ semantica-explorer --graph my_graph.json --no-browser
 ```
 
 ```python Python
+import subprocess
 from semantica.context import ContextGraph
-from semantica.explorer import start_explorer
 
 graph = ContextGraph(advanced_analytics=True)
 # ... build or load your graph ...
-graph.save("my_graph.json")
+graph.save_to_file("my_graph.json")
 
-# Launch the dashboard
-start_explorer(graph_path="my_graph.json", port=8000)
+# Launch the dashboard via CLI
+subprocess.run(["semantica-explorer", "--graph", "my_graph.json", "--port", "8000"])
 ```
 
 ```python Module

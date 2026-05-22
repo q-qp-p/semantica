@@ -111,34 +111,40 @@ Deliver     →  GraphRAG, agents, export, visualization
 <CodeGroup>
 
 ```python Custom Ingestor
-from semantica.ingest import BaseIngestor
+from semantica.ingest.registry import method_registry
 
-class CustomIngestor(BaseIngestor):
-    def ingest(self, source: str) -> list[dict]:
-        # Return a list of document dicts with 'text', 'metadata', 'source'
-        return [{"text": "...", "metadata": {}, "source": source}]
+def custom_file_ingestor(source):
+    # Return a list of document dicts with 'text', 'metadata', 'source'
+    return [{"text": "...", "metadata": {}, "source": source}]
+
+# Register under the "file" task category with a unique name
+method_registry.register("file", "my_custom_format", custom_file_ingestor)
+
+# Verify registration
+available = method_registry.list_all("file")
 ```
 
 ```python Custom Extractor
-from semantica.semantic_extract import BaseExtractor
+from semantica.semantic_extract.registry import method_registry
 
-class CustomExtractor(BaseExtractor):
-    def extract(self, text: str) -> list[dict]:
-        # Return a list of entity dicts with 'text', 'type', 'confidence'
-        return [{"text": "...", "type": "CUSTOM_TYPE", "confidence": 0.9}]
+def custom_entity_extractor(text, config=None):
+    # Return a list of entity dicts with 'text', 'type', 'confidence'
+    return [{"text": "...", "type": "CUSTOM_TYPE", "confidence": 0.9}]
+
+# Register under the "entity" extraction task
+method_registry.register("entity", "my_extractor", custom_entity_extractor)
 ```
 
 ```python Custom Plugin
-from semantica.core import PluginRegistry, BasePlugin
+from semantica.core import PluginRegistry
 
-class MyPlugin(BasePlugin):
-    name = "my_plugin"
-
+class MyPlugin:
     def process(self, graph, config):
         # Modify the graph in place
         return graph
 
-PluginRegistry.register(MyPlugin)
+registry = PluginRegistry()
+registry.register_plugin("my_plugin", MyPlugin, version="1.0.0")
 ```
 
 </CodeGroup>
