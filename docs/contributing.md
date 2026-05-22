@@ -18,7 +18,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-New to the project? Look for [`good-first-issue`](https://github.com/Hawksight-AI/semantica/labels/good-first-issue) labels.
+New to the project? Look for [`good-first-issue`](https://github.com/semantica-agi/semantica/labels/good-first-issue) labels.
 
 ---
 
@@ -91,14 +91,14 @@ flake8 semantica/          # lint
 
 ## Code of Conduct
 
-Please follow the [Code of Conduct](https://github.com/Hawksight-AI/semantica/blob/main/CODE_OF_CONDUCT.md). Be respectful, patient, and constructive. All contributors are recognized in release notes and the GitHub contributors list.
+Please follow the [Code of Conduct](https://github.com/semantica-agi/semantica/blob/main/CODE_OF_CONDUCT.md). Be respectful, patient, and constructive. All contributors are recognized in release notes and the GitHub contributors list.
 
 ---
 
 ## Help
 
-- [GitHub Issues](https://github.com/Hawksight-AI/semantica/issues)
-- [GitHub Discussions](https://github.com/Hawksight-AI/semantica/discussions)
+- [GitHub Issues](https://github.com/semantica-agi/semantica/issues)
+- [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions)
 - [Discord](https://discord.gg/sV34vps5hH)
 
 ---

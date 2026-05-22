@@ -288,6 +288,6 @@ treatment_decision = health_agent.record_decision(
 
 ### Cookbook
 
-- [Context Module](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb) — practical guide to agent memory and decision tracking · Intermediate
-- [Advanced Context Engineering](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb) — production-grade memory system with FAISS and Neo4j · Advanced
-- [Decision Tracking with KG Algorithms](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/advanced/12_Decision_Tracking_KG.ipynb) — decision lifecycle, precedent search, policy compliance · Advanced
+- [Context Module](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/19_Context_Module.ipynb) — practical guide to agent memory and decision tracking · Intermediate
+- [Advanced Context Engineering](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/11_Advanced_Context_Engineering.ipynb) — production-grade memory system with FAISS and Neo4j · Advanced
+- [Decision Tracking with KG Algorithms](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/12_Decision_Tracking_KG.ipynb) — decision lifecycle, precedent search, policy compliance · Advanced

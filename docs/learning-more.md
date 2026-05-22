@@ -33,17 +33,17 @@ icon: "graduation-cap"
 2. [Core Concepts](concepts) — understand KGs, embeddings, and extraction
 3. [Getting Started](getting-started) — first working example
 4. [Quickstart Tutorial](quickstart) — build your first KG
-5. [Welcome to Semantica notebook](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/introduction/01_Welcome_to_Semantica.ipynb) — interactive introduction
+5. [Welcome to Semantica notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/01_Welcome_to_Semantica.ipynb) — interactive introduction
 
 ---
 
 ### Intermediate Path
 
 1. [Modules Guide](modules) — every module with code examples
-2. [Building Knowledge Graphs notebook](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb)
-3. [Embeddings notebook](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/introduction/09_Embeddings.ipynb)
-4. [GraphRAG Complete notebook](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb)
-5. [Multi-Source Data Integration notebook](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb)
+2. [Building Knowledge Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/07_Building_Knowledge_Graphs.ipynb)
+3. [Embeddings notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/09_Embeddings.ipynb)
+4. [GraphRAG Complete notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/use_cases/advanced_rag/01_GraphRAG_Complete.ipynb)
+5. [Multi-Source Data Integration notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/06_Multi_Source_Data_Integration.ipynb)
 6. [Use Cases](use-cases) — domain-specific examples
 
 ---
@@ -51,10 +51,10 @@ icon: "graduation-cap"
 ### Advanced Path
 
 1. [Architecture Guide](architecture) — three-layer system overview
-2. [Temporal Graphs notebook](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/advanced/04_Temporal_Graphs.ipynb) — v0.4.0 temporal intelligence
-3. [Ontology notebook](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/introduction/14_Ontology.ipynb) — v0.5.0 Ontology Hub
-4. [Complete Visualization Suite notebook](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/advanced/03_Complete_Visualization_Suite.ipynb)
-5. [Multi-Format Export notebook](https://github.com/Hawksight-AI/semantica/blob/main/cookbook/advanced/05_Multi_Format_Export.ipynb)
+2. [Temporal Graphs notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/04_Temporal_Graphs.ipynb) — v0.4.0 temporal intelligence
+3. [Ontology notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/introduction/14_Ontology.ipynb) — v0.5.0 Ontology Hub
+4. [Complete Visualization Suite notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/03_Complete_Visualization_Suite.ipynb)
+5. [Multi-Format Export notebook](https://github.com/semantica-agi/semantica/blob/main/cookbook/advanced/05_Multi_Format_Export.ipynb)
 6. [Deep Dive](deep-dive) — internals and extension points
 
 ---

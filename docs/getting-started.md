@@ -174,7 +174,7 @@ Semantica uses a modular, layered architecture — import only what you need.
   <Card title="Discord" icon="discord" href="https://discord.gg/sV34vps5hH">
     Ask questions, share projects, get community support.
   </Card>
-  <Card title="GitHub Issues" icon="github" href="https://github.com/Hawksight-AI/semantica/issues">
+  <Card title="GitHub Issues" icon="github" href="https://github.com/semantica-agi/semantica/issues">
     Report bugs or request features.
   </Card>
   <Card title="FAQ" icon="circle-question" href="faq">

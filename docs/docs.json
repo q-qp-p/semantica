@@ -215,7 +215,7 @@
         },
         {
           "anchor": "GitHub",
-          "href": "https://github.com/Hawksight-AI/semantica",
+          "href": "https://github.com/semantica-agi/semantica",
           "icon": "github"
         },
         {
@@ -235,7 +235,7 @@
     "links": [
       {
         "label": "GitHub",
-        "href": "https://github.com/Hawksight-AI/semantica"
+        "href": "https://github.com/semantica-agi/semantica"
       },
       {
         "label": "Discord",
@@ -254,7 +254,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/Hawksight-AI/semantica",
+      "github": "https://github.com/semantica-agi/semantica",
       "discord": "https://discord.gg/sV34vps5hH",
       "x": "https://x.com/BuildSemantica"
     }

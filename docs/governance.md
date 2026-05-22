@@ -18,7 +18,7 @@ icon: "scale-balanced"
 **Contributors**
 - Submit code, documentation, and bug reports
 - Help with issues and reviews
-- Recognized in [CONTRIBUTORS.md](https://github.com/Hawksight-AI/semantica/blob/main/CONTRIBUTORS.md)
+- Recognized in [CONTRIBUTORS.md](https://github.com/semantica-agi/semantica/blob/main/CONTRIBUTORS.md)
 
 **Community Members**
 - Use Semantica and provide feedback
@@ -75,7 +75,7 @@ Semantica follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 - **GitHub Issues** — bug reports, feature requests, questions
 - **GitHub PRs** — code contributions
 - **GitHub Discussions** — community conversation
-- **Security Advisories** — [report security issues privately](https://github.com/Hawksight-AI/semantica/security/advisories/new)
+- **Security Advisories** — [report security issues privately](https://github.com/semantica-agi/semantica/security/advisories/new)
 
 ---
 
@@ -91,7 +91,7 @@ Semantica follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`):
 
 ## License
 
-MIT License — see [LICENSE](https://github.com/Hawksight-AI/semantica/blob/main/LICENSE) and the [License page](license).
+MIT License — see [LICENSE](https://github.com/semantica-agi/semantica/blob/main/LICENSE) and the [License page](license).
 
 ---
 

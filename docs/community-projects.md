@@ -7,7 +7,7 @@ icon: "people-group"
 > Projects and integrations from the Semantica community.
 
 <Tip>
-Have a project using Semantica? [Submit it on GitHub](https://github.com/Hawksight-AI/semantica/issues/new) — we'd love to feature it here.
+Have a project using Semantica? [Submit it on GitHub](https://github.com/semantica-agi/semantica/issues/new) — we'd love to feature it here.
 </Tip>
 
 ---
@@ -58,7 +58,7 @@ See the [Contributing Guide](contributing) for full details.
   <Card title="Contributing" icon="code-pull-request" href="contributing">
     Submit code, docs, or tests.
   </Card>
-  <Card title="GitHub Issues" icon="circle-dot" href="https://github.com/Hawksight-AI/semantica/issues">
+  <Card title="GitHub Issues" icon="circle-dot" href="https://github.com/semantica-agi/semantica/issues">
     Report bugs or request features.
   </Card>
 </CardGroup>

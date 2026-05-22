@@ -1,8 +1,8 @@
 # Semantica - Semantic Layer & Knowledge Engineering Framework
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/Hawksight-AI/semantica/blob/main/LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/semantica-dev/semantica)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/semantica-agi/semantica/blob/main/LICENSE)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/semantica-agi/semantica)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://docs.semantica.dev)
 
 **Semantica** is a comprehensive Python framework for building semantic layers and performing knowledge engineering from unstructured data. It provides production-ready tools for transforming raw data into structured, queryable knowledge graphs with advanced semantic understanding.
@@ -71,7 +71,7 @@ Note: Visualization dependencies (plotly, matplotlib, seaborn) are included by d
 
 ### Development Installation
 ```bash
-git clone https://github.com/semantica-dev/semantica.git
+git clone https://github.com/semantica-agi/semantica.git
 cd semantica
 pip install -e ".[dev]"
 ```
@@ -1414,7 +1414,7 @@ We welcome contributions! Please see our [Contributing Guide](contributing.md) f
 
 ### Development Setup
 ```bash
-git clone https://github.com/semantica-dev/semantica.git
+git clone https://github.com/semantica-agi/semantica.git
 cd semantica
 pip install -e ".[dev]"
 pre-commit install
@@ -1429,7 +1429,7 @@ pytest tests/ -m "integration"
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/Hawksight-AI/semantica/blob/main/LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/semantica-agi/semantica/blob/main/LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
@@ -1441,13 +1441,13 @@ This project is licensed under the MIT License - see the [LICENSE](https://githu
 ## 📞 Support
 
 - **Documentation**: [https://docs.semantica.dev](https://docs.semantica.dev)
-- **Issues**: [GitHub Issues](https://github.com/semantica-dev/semantica/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/semantica-dev/semantica/discussions)
+- **Issues**: [GitHub Issues](https://github.com/semantica-agi/semantica/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions)
 - **Email**: support@semantica.dev
 
 ## 🌟 Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=semantica-dev/semantica&type=Date)](https://star-history.com/#semantica-dev/semantica&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=semantica-agi/semantica&type=Date)](https://star-history.com/#semantica-agi/semantica&Date)
 
 ---
 

@@ -24,7 +24,7 @@ pip install "semantica[graph-falkordb]" # FalkorDB (Redis-based)
 pip install "semantica[graph-all]"      # All graph backends
 
 # Development installation
-git clone https://github.com/semantica/semantica.git
+git clone https://github.com/semantica-agi/semantica.git
 cd semantica
 pip install -e ".[dev]"
 ```
@@ -1025,7 +1025,7 @@ knowledge_graph.apply_resolutions(resolved_data)
 ### 💬 Community Support
 
 - **💬 [Discord Community](https://discord.gg/sV34vps5hH)** - Real-time chat and support
-- **🐙 [GitHub Discussions](https://github.com/semantica/semantica/discussions)** - Community Q&A
+- **🐙 [GitHub Discussions](https://github.com/semantica-agi/semantica/discussions)** - Community Q&A
 - **📧 [Mailing List](https://groups.google.com/g/semantica)** - Announcements and updates
 - **🐦 [Twitter](https://twitter.com/semantica)** - Latest news and tips
 
@@ -1040,7 +1040,7 @@ knowledge_graph.apply_resolutions(resolved_data)
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/Hawksight-AI/semantica/blob/main/LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/semantica-agi/semantica/blob/main/LICENSE) file for details.
 
 ---
 

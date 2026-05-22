@@ -15,7 +15,7 @@ icon: "quote-left"
   title   = {Semantica: An Open Source Framework for Semantic Layers and Knowledge Engineering},
   author  = {Hawksight AI},
   year    = {2026},
-  url     = {https://github.com/Hawksight-AI/semantica},
+  url     = {https://github.com/semantica-agi/semantica},
   version = {0.5.0},
   doi     = {10.5281/zenodo.XXXXXXX}
 }
@@ -25,25 +25,25 @@ icon: "quote-left"
 
 ## APA
 
-Hawksight AI. (2026). *Semantica: An Open Source Framework for Semantic Layers and Knowledge Engineering* (Version 0.5.0) \[Computer software\]. https://github.com/Hawksight-AI/semantica
+Hawksight AI. (2026). *Semantica: An Open Source Framework for Semantic Layers and Knowledge Engineering* (Version 0.5.0) \[Computer software\]. https://github.com/semantica-agi/semantica
 
 ---
 
 ## MLA
 
-Hawksight AI. *Semantica: An Open Source Framework for Semantic Layers and Knowledge Engineering*. Version 0.5.0, GitHub, 2026, https://github.com/Hawksight-AI/semantica.
+Hawksight AI. *Semantica: An Open Source Framework for Semantic Layers and Knowledge Engineering*. Version 0.5.0, GitHub, 2026, https://github.com/semantica-agi/semantica.
 
 ---
 
 ## Chicago
 
-Hawksight AI. *Semantica: An Open Source Framework for Semantic Layers and Knowledge Engineering*. Version 0.5.0. GitHub, 2026. https://github.com/Hawksight-AI/semantica.
+Hawksight AI. *Semantica: An Open Source Framework for Semantic Layers and Knowledge Engineering*. Version 0.5.0. GitHub, 2026. https://github.com/semantica-agi/semantica.
 
 ---
 
 ## IEEE
 
-Hawksight AI, "Semantica: An Open Source Framework for Semantic Layers and Knowledge Engineering," Version 0.5.0, GitHub, 2026. \[Online\]. Available: https://github.com/Hawksight-AI/semantica
+Hawksight AI, "Semantica: An Open Source Framework for Semantic Layers and Knowledge Engineering," Version 0.5.0, GitHub, 2026. \[Online\]. Available: https://github.com/semantica-agi/semantica
 
 ---
 
@@ -55,7 +55,7 @@ Hawksight AI, "Semantica: An Open Source Framework for Semantic Layers and Knowl
 
 ## Share Your Research
 
-Published research using Semantica? [Let us know](https://github.com/Hawksight-AI/semantica/issues) — we may feature your work.
+Published research using Semantica? [Let us know](https://github.com/semantica-agi/semantica/issues) — we may feature your work.
 
 ---
 

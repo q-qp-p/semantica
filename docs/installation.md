@@ -99,7 +99,7 @@ Install only what you need:
 For the latest development version or to contribute:
 
 ```bash
-git clone https://github.com/Hawksight-AI/semantica.git
+git clone https://github.com/semantica-agi/semantica.git
 cd semantica
 
 pip install -e .          # core only
@@ -110,7 +110,7 @@ pip install -e ".[dev]"   # dev tools (pytest, black, etc.)
 If you encounter issues with the PyPI release, install directly from the main branch:
 
 ```bash
-pip install git+https://github.com/Hawksight-AI/semantica.git@main
+pip install git+https://github.com/semantica-agi/semantica.git@main
 ```
 
 ---

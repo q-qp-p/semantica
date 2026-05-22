@@ -232,7 +232,7 @@ pip install --upgrade semantica
   <Card title="Discord" icon="discord" href="https://discord.gg/sV34vps5hH">
     Community chat and live support.
   </Card>
-  <Card title="GitHub Issues" icon="github" href="https://github.com/Hawksight-AI/semantica/issues">
+  <Card title="GitHub Issues" icon="github" href="https://github.com/semantica-agi/semantica/issues">
     Bug reports and feature requests.
   </Card>
   <Card title="Contributing" icon="code-pull-request" href="contributing">

@@ -11,16 +11,16 @@ icon: "users"
 ## Get Help
 
 <CardGroup cols={2}>
-  <Card title="GitHub Issues" icon="circle-dot" href="https://github.com/Hawksight-AI/semantica/issues">
+  <Card title="GitHub Issues" icon="circle-dot" href="https://github.com/semantica-agi/semantica/issues">
     Bug reports and feature requests.
   </Card>
-  <Card title="GitHub Discussions" icon="comments" href="https://github.com/Hawksight-AI/semantica/discussions">
+  <Card title="GitHub Discussions" icon="comments" href="https://github.com/semantica-agi/semantica/discussions">
     Questions, ideas, and community conversation.
   </Card>
-  <Card title="Pull Requests" icon="code-pull-request" href="https://github.com/Hawksight-AI/semantica/pulls">
+  <Card title="Pull Requests" icon="code-pull-request" href="https://github.com/semantica-agi/semantica/pulls">
     Code contributions and reviews.
   </Card>
-  <Card title="Security Issues" icon="shield" href="https://github.com/Hawksight-AI/semantica/security/advisories/new">
+  <Card title="Security Issues" icon="shield" href="https://github.com/semantica-agi/semantica/security/advisories/new">
     Report vulnerabilities privately.
   </Card>
 </CardGroup>
@@ -29,7 +29,7 @@ icon: "users"
 
 ## Community Guidelines
 
-We follow the [Contributor Covenant Code of Conduct](https://github.com/Hawksight-AI/semantica/blob/main/CODE_OF_CONDUCT.md). Our community values:
+We follow the [Contributor Covenant Code of Conduct](https://github.com/semantica-agi/semantica/blob/main/CODE_OF_CONDUCT.md). Our community values:
 
 - **Respect** — Treat everyone with kindness and patience
 - **Inclusion** — Welcome all backgrounds and experience levels
@@ -53,7 +53,7 @@ See the [Contributing Guide](contributing) for full details.
 
 ## Stay Connected
 
-- **[GitHub](https://github.com/Hawksight-AI/semantica)** — Source code, releases, roadmap
+- **[GitHub](https://github.com/semantica-agi/semantica)** — Source code, releases, roadmap
 - **[PyPI](https://pypi.org/project/semantica/)** — Package downloads
 
 ---

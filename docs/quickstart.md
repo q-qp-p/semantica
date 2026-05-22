@@ -25,7 +25,7 @@ pip install semantica[all]
 ```
 
 ```bash From source
-git clone https://github.com/Hawksight-AI/semantica.git
+git clone https://github.com/semantica-agi/semantica.git
 cd semantica
 pip install -e ".[dev]"
 ```
