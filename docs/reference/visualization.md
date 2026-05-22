@@ -140,7 +140,7 @@ start_explorer(graph=kg, port=8080)
   <Card title="Embeddings" icon="vector-square" href="embeddings">
     Visualize embedding space.
   </Card>
-  <Card title="Explorer" icon="globe" href="evals">
+  <Card title="Explorer" icon="globe" href="explorer">
     Full Knowledge Explorer UI.
   </Card>
 </CardGroup>
