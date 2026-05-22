@@ -428,7 +428,7 @@ pip install --upgrade semantica
   <Card title="Core Concepts" icon="book-open" href="concepts">
     Knowledge graphs, ontologies, reasoning engines — the mental model behind Semantica.
   </Card>
-  <Card title="Examples" icon="code" href="examples">
+  <Card title="Cookbook" icon="code" href="cookbook">
     15+ copy-paste examples for healthcare, finance, legal, and cybersecurity.
   </Card>
   <Card title="API Reference" icon="rectangle-terminal" href="reference/context">

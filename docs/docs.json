@@ -68,9 +68,7 @@
           {
             "group": "Guides",
             "pages": [
-              "examples",
               "architecture",
-              "deep-dive",
               "learning-more"
             ]
           },
@@ -91,7 +89,6 @@
           {
             "group": "Vector Stores",
             "pages": [
-              "vector_store_usage",
               "vector_stores/pgvector"
             ]
           }

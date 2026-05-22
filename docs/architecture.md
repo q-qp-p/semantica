@@ -193,7 +193,7 @@ Centralized `ConfigManager` with environment variable overrides. No magic defaul
   <Card title="Modules" icon="cubes" href="modules">
     Full module documentation with code examples.
   </Card>
-  <Card title="Deep Dive" icon="microscope" href="deep-dive">
+  <Card title="Learning More" icon="microscope" href="learning-more">
     Internals, algorithms, and advanced extension patterns.
   </Card>
   <Card title="Pipeline Reference" icon="gear" href="reference/pipeline">
