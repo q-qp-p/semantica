@@ -14,6 +14,8 @@ At its core, Semantica adds a **context and intelligence layer** on top of your 
 
 ## Knowledge Graphs
 
+<img src="/assets/img/diagrams/kg-structure.svg" alt="Knowledge graph node and edge structure showing entities (Person, Organization, Location, Date) and their typed relations" style={{ width: '100%', borderRadius: '12px', margin: '0 0 20px' }} />
+
 The foundation of everything in Semantica. A knowledge graph stores information as three building blocks:
 
 - **Nodes (entities)** — people, companies, locations, events, concepts
@@ -75,6 +77,8 @@ Semantica uses embeddings for:
 ## GraphRAG
 
 GraphRAG (Graph-Augmented Retrieval Augmented Generation) enhances LLM responses by grounding them in a structured knowledge graph rather than raw text chunks alone.
+
+<img src="/assets/img/diagrams/graphrag-flow.svg" alt="GraphRAG flow: User Query → Vector Search + Graph Traversal → Context Builder → LLM → Grounded Answer" style={{ width: '100%', borderRadius: '12px', margin: '16px 0 20px' }} />
 
 **How it works:**
 

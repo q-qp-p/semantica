@@ -16,6 +16,8 @@ icon: "microchip"
 - **`TemporalReasoningEngine`** — all 13 Allen interval algebra relations for time-aware inference
 - **`ExplanationGenerator`** — structured explanation paths for every derived conclusion
 
+<img src="/assets/img/diagrams/reasoning-chain.svg" alt="Forward chaining inference: known facts + IF/THEN rules produce derived facts with a full traceable explanation path" style={{ width: '100%', borderRadius: '12px', margin: '0 0 24px' }} />
+
 ## Reasoner (Main Facade)
 
 The unified entry point for rule-based forward-chaining inference:

@@ -15,6 +15,8 @@ icon: "brain"
 - **`CausalAnalyzer`** — traces downstream impact of any decision
 - **`PolicyEngine`** — validates decisions against configurable rules before they're recorded
 
+<img src="/assets/img/diagrams/agent-context-flow.svg" alt="AgentContext hub: AI Agent calls store/retrieve against VectorStore and record_decision against ContextGraph" style={{ width: '100%', borderRadius: '12px', margin: '0 0 24px' }} />
+
 ## AgentContext
 
 The main entry point. Wraps memory, graph, and decision tracking behind a single API.

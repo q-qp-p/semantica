@@ -39,6 +39,8 @@ python -c "import semantica; print(semantica.__version__)"
 
 ## Full Pipeline
 
+<img src="/assets/img/diagrams/pipeline-flow.svg" alt="Semantica end-to-end pipeline: Ingest → Parse → Normalize → Extract → Build KG → QA → Store → Deliver" style={{ width: '100%', borderRadius: '10px', margin: '0 0 24px' }} />
+
 <Steps>
 
 <Step title="Ingest">

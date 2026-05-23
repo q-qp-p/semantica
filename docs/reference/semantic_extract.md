@@ -14,6 +14,8 @@ icon: "magnifying-glass-chart"
 - **`EventExtractor`** — event detection with participants, temporal context, and confidence scores
 - **`CoreferenceResolver`** — resolve "Apple" and "the company" to the same entity across a document
 
+<img src="/assets/img/diagrams/extraction-pipeline.svg" alt="Semantic extraction pipeline: raw text fans into NER, Relation, and Coreference extractors, then merges into a Triplet Generator" style={{ width: '100%', borderRadius: '12px', margin: '0 0 24px' }} />
+
 ## NERExtractor
 
 ```python

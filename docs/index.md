@@ -34,6 +34,8 @@ Semantica is the **accountability and context layer** you add on top of your exi
 
 Works alongside any LLM provider and any agent framework.
 
+<img src="/assets/img/diagrams/architecture-overview.svg" alt="Semantica four-layer architecture: Ingestion → Processing → Intelligence → Application" style={{ width: '100%', borderRadius: '12px', margin: '24px 0' }} />
+
 ## Quick Start
 
 ```bash

@@ -21,6 +21,8 @@ icon: "diagram-project"
   For conflict detection and advanced entity resolution, use `semantica.conflicts` and `semantica.deduplication` alongside this module.
 </Tip>
 
+<img src="/assets/img/diagrams/kg-structure.svg" alt="Knowledge graph entity and relation structure: Person, Organization, Location, Date nodes with typed labeled edges" style={{ width: '100%', borderRadius: '12px', margin: '0 0 24px' }} />
+
 ## GraphBuilder
 
 Constructs knowledge graphs from extracted entities and relationships:

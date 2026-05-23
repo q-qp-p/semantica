@@ -14,6 +14,8 @@ icon: "gear"
 - **`FailureHandler`** — skip, stop, or retry failed documents without halting the pipeline
 - **Progress tracking** — console (tqdm), WebSocket streaming, or file logging
 
+<img src="/assets/img/diagrams/pipeline-flow.svg" alt="Pipeline step sequence: Ingest → Parse → Normalize → Extract → Build KG → QA → Store → Deliver" style={{ width: '100%', borderRadius: '10px', margin: '0 0 24px' }} />
+
 ## Basic Pipeline
 
 ```python
