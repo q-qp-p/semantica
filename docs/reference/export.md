@@ -8,191 +8,270 @@ icon: "file-export"
 
 ## What You Get
 
-- **`RDFExporter`** — Turtle, JSON-LD, N-Triples, RDF/XML with namespace management
-- **`ParquetExporter`** — columnar storage for Spark, BigQuery, Databricks, Snowflake
-- **`LPGExporter`** — Cypher CREATE/MERGE statements for Neo4j and Memgraph
-- **`ArangoAQLExporter`** — AQL INSERT statements for ArangoDB multi-model graphs
-- **`GraphExporter`** — GraphML, GEXF, DOT for visualization tools like Gephi
-- **`OWLExporter`** — OWL 2.0 ontology export in Turtle, XML, and JSON-LD
-- **`CSVExporter`**, **`VectorExporter`**, **`ArrowExporter`**, **`DistanceExporter`**, **`ReportGenerator`**
+<CardGroup cols={2}>
+  <Card title="RDFExporter" icon="diagram-project">
+    Turtle, JSON-LD, N-Triples, RDF/XML with namespace management and optional PROV-O provenance embedding.
+  </Card>
+  <Card title="ParquetExporter" icon="layer-group">
+    Columnar storage for Spark, BigQuery, Databricks, and Snowflake with explicit PyArrow typing.
+  </Card>
+  <Card title="LPG & ArangoDB" icon="server">
+    Cypher CREATE/MERGE for Neo4j and Memgraph; AQL INSERT for ArangoDB vertex and edge collections.
+  </Card>
+  <Card title="Graph Formats" icon="chart-bar">
+    GraphML, GEXF, DOT for Gephi and Graphviz. OWL 2.0 ontology export in Turtle, XML, and JSON-LD.
+  </Card>
+  <Card title="Vector & Arrow" icon="vector-square">
+    JSON, NumPy `.npy`, and FAISS index export for embedding vectors. Apache Arrow IPC for zero-copy transfer.
+  </Card>
+  <Card title="Distance & Reports" icon="chart-line">
+    Distance matrix CSV/JSON from Distance Intelligence (v0.5.0). HTML, Markdown, and JSON analytics reports.
+  </Card>
+</CardGroup>
 
-## RDFExporter
+## Quick Start
+
+<Steps>
+  <Step title="Choose your format and instantiate an exporter">
+    ```python
+    from semantica.export import RDFExporter
+
+    exporter = RDFExporter()
+    ```
+  </Step>
+  <Step title="Export the graph">
+    ```python
+    # Interactive HTML — opens in browser, supports hover and click
+    exporter.export_to_file(graph, "output.ttl", format="turtle")
+    ```
+  </Step>
+  <Step title="Use convenience functions for one-liners">
+    ```python
+    from semantica.export import export_rdf, export_parquet, export_csv
+
+    export_rdf(graph,     "output.ttl",   format="turtle")
+    export_parquet(graph, "output/",      compression="snappy")
+    export_csv(graph,     "nodes.csv",    target="nodes")
+    ```
+  </Step>
+  <Step title="Stream large graphs to avoid OOM">
+    ```python
+    from semantica.export import ParquetExporter
+
+    exporter = ParquetExporter(compression="snappy")
+    exporter.export_stream(graph, output_dir="output/", batch_size=10_000)
+    ```
+  </Step>
+</Steps>
+
+## Exporters
+
+<Tabs>
+  <Tab title="RDF">
+    Export to W3C RDF formats — Turtle, JSON-LD, N-Triples, and RDF/XML:
+
+    ```python
+    from semantica.export import RDFExporter
+
+    exporter = RDFExporter()
+
+    # Turtle (most readable RDF format)
+    exporter.export_to_file(graph, "output.ttl",    format="turtle")
+
+    # JSON-LD (best for APIs and Linked Data)
+    exporter.export_to_file(graph, "output.jsonld", format="json-ld")
+
+    # N-Triples (streaming-friendly, one triple per line)
+    exporter.export_to_file(graph, "output.nt",     format="nt")
+
+    # RDF/XML (W3C standard, broadest compatibility)
+    exporter.export_to_file(graph, "output.xml",    format="xml")
+
+    # Export to string instead of file
+    rdf_str = exporter.export_to_rdf(graph, format="turtle")
+    ```
+
+    **Custom namespace management:**
+
+    ```python
+    from semantica.export import NamespaceManager, RDFExporter
+
+    ns_manager = NamespaceManager()
+    ns_manager.register("ex",     "http://example.org/")
+    ns_manager.register("schema", "https://schema.org/")
+
+    exporter = RDFExporter(namespace_manager=ns_manager)
+    ```
+
+    **Export with PROV-O provenance:**
+
+    ```python
+    from semantica.export import RDFExporter
+    from semantica.provenance import ProvenanceManager
+
+    provenance = ProvenanceManager()
+    # ... track entities during extraction ...
+
+    exporter = RDFExporter(include_provenance=True, provenance_manager=provenance)
+    exporter.export_to_file(graph, "output_with_prov.ttl", format="turtle")
+    # → Each entity's prov:wasGeneratedBy, prov:wasDerivedFrom, prov:hadPrimarySource
+    #   triples are included alongside the entity data triples
+    ```
+  </Tab>
+  <Tab title="Columnar & Analytics">
+    Columnar formats for analytics pipelines and human-readable export:
+
+    ```python
+    from semantica.export import ParquetExporter
+
+    exporter = ParquetExporter(compression="snappy")
+    # compression options: snappy | gzip | brotli | zstd | lz4
+
+    # Export nodes and edges as separate Parquet files
+    exporter.export_nodes(graph, "nodes.parquet")
+    exporter.export_edges(graph, "edges.parquet")
+
+    # Export full graph partitioned by node type
+    exporter.export(graph, output_dir="graph_parquet/", partition_by="node_type")
+    ```
+
+    Schema is explicitly typed with PyArrow for clean Spark/BigQuery ingestion.
+
+    ```python
+    from semantica.export import CSVExporter
+
+    exporter = CSVExporter(delimiter=",")
+    exporter.export_nodes(graph, "nodes.csv")
+    exporter.export_edges(graph, "edges.csv")
+    ```
+
+    ```python
+    from semantica.export import YAMLExporter
+
+    exporter = YAMLExporter()
+    exporter.export(graph, "graph.yaml")
+
+    yaml_str = exporter.to_string(graph)
+    ```
+  </Tab>
+  <Tab title="Graph DB Import">
+    Export Cypher or AQL statements for direct graph database import:
+
+    ```python
+    from semantica.export import LPGExporter
+
+    exporter = LPGExporter()
+
+    # CREATE statements
+    cypher = exporter.to_cypher(graph)
+    exporter.export(graph, "import.cypher", format="cypher")
+
+    # MERGE statements (idempotent — safe to re-run)
+    cypher_merge = exporter.to_cypher(graph, use_merge=True)
+    ```
+
+    ```python
+    from semantica.export import ArangoAQLExporter
+
+    exporter = ArangoAQLExporter(
+        vertex_collection="entities",
+        edge_collection="relationships"
+    )
+
+    aql = exporter.export(graph)                # returns AQL string
+    exporter.export_to_file(graph, "import.aql")
+    ```
+  </Tab>
+  <Tab title="Visualization">
+    Export for graph visualization tools and OWL ontology distribution:
+
+    ```python
+    from semantica.export import GraphExporter
+
+    exporter = GraphExporter()
+
+    exporter.export(graph, "graph.graphml", format="graphml")  # Gephi, yEd
+    exporter.export(graph, "graph.gexf",    format="gexf")     # Gephi streaming
+    exporter.export(graph, "graph.dot",     format="dot")      # Graphviz
+    ```
+
+    ```python
+    from semantica.export import OWLExporter
+
+    exporter = OWLExporter()
+    exporter.export(ontology, path="ontology.ttl",  format="turtle")
+    exporter.export(ontology, path="ontology.owl",  format="xml")
+    exporter.export(ontology, path="ontology.json", format="json-ld")
+    ```
+  </Tab>
+  <Tab title="Specialized">
+    Vector embeddings, Arrow IPC, distance matrices, and analytics reports:
+
+    ```python
+    from semantica.export import VectorExporter
+
+    exporter = VectorExporter()
+    exporter.export(embeddings, metadata, "vectors.json",  format="json")
+    exporter.export(embeddings, metadata, "vectors.npy",   format="numpy")
+    exporter.export(embeddings, metadata, "vectors.faiss", format="faiss")
+    ```
+
+    ```python
+    from semantica.export import ArrowExporter
+
+    exporter = ArrowExporter()
+    exporter.export(graph, "graph.arrow")   # requires pyarrow
+    ```
+
+    ```python
+    from semantica.export import DistanceExporter
+
+    exporter = DistanceExporter()
+    exporter.export_matrix(distance_matrix, node_labels, "distances.csv")
+    exporter.export_ego(ego_neighborhood, center_node="Apple Inc.", path="ego.json")
+    ```
+
+    ```python
+    from semantica.export import ReportGenerator
+
+    generator = ReportGenerator()
+    generator.generate(graph, analytics_result, "report.html",  format="html")
+    generator.generate(graph, analytics_result, "report.md",    format="markdown")
+    generator.generate(graph, analytics_result, "report.json",  format="json")
+    ```
+  </Tab>
+</Tabs>
+
+## Streaming Export
+
+For graphs too large to hold in memory, use streaming export — writes incrementally without buffering the full graph:
 
 ```python
-from semantica.export import RDFExporter
+from semantica.export import RDFExporter, ParquetExporter
 
+# Stream RDF — yields triples one at a time, no full-graph buffer
 exporter = RDFExporter()
+with exporter.stream(graph, format="turtle") as stream:
+    for triple_line in stream:
+        output_file.write(triple_line)
 
-# Turtle (most readable RDF format)
-exporter.export_to_file(graph, "output.ttl",    format="turtle")
-
-# JSON-LD (best for APIs and Linked Data)
-exporter.export_to_file(graph, "output.jsonld", format="json-ld")
-
-# N-Triples (streaming-friendly, one triple per line)
-exporter.export_to_file(graph, "output.nt",     format="nt")
-
-# RDF/XML (W3C standard, broadest compatibility)
-exporter.export_to_file(graph, "output.xml",    format="xml")
-
-# Export to string instead of file
-rdf_str = exporter.export_to_rdf(graph, format="turtle")
-```
-
-Custom namespace management:
-
-```python
-from semantica.export import NamespaceManager, RDFExporter
-
-ns_manager = NamespaceManager()
-ns_manager.register("ex",     "http://example.org/")
-ns_manager.register("schema", "https://schema.org/")
-
-exporter = RDFExporter(namespace_manager=ns_manager)
-```
-
-## ParquetExporter
-
-Columnar export for Spark, BigQuery, Databricks, and Snowflake analytics pipelines:
-
-```python
-from semantica.export import ParquetExporter
-
+# Stream Parquet — writes row groups incrementally
 exporter = ParquetExporter(compression="snappy")
-# compression options: snappy | gzip | brotli | zstd | lz4
-
-# Export nodes and edges as separate Parquet files
-exporter.export_nodes(graph, "nodes.parquet")
-exporter.export_edges(graph, "edges.parquet")
-
-# Export full graph partitioned by node type
-exporter.export(graph, output_dir="graph_parquet/", partition_by="node_type")
+exporter.export_stream(graph, output_dir="output/", batch_size=10_000)
 ```
 
-Schema is explicitly typed with PyArrow for clean Spark/BigQuery ingestion.
+Streaming is recommended for graphs with > 500k nodes.
 
-## LPGExporter
-
-Labeled Property Graph export — Cypher statements for Neo4j and Memgraph:
+## Selective Export
 
 ```python
-from semantica.export import LPGExporter
+# Export a subgraph
+subgraph = graph.subgraph(node_ids=["apple_inc", "steve_jobs"])
+export_rdf(subgraph, "subgraph.ttl", format="turtle")
 
-exporter = LPGExporter()
-
-# CREATE statements
-cypher = exporter.to_cypher(graph)
-exporter.export(graph, "import.cypher", format="cypher")
-
-# MERGE statements (idempotent — safe to re-run)
-cypher_merge = exporter.to_cypher(graph, use_merge=True)
-```
-
-## ArangoAQLExporter
-
-AQL INSERT statements for ArangoDB vertex and edge collections:
-
-```python
-from semantica.export import ArangoAQLExporter
-
-exporter = ArangoAQLExporter(
-    vertex_collection="entities",
-    edge_collection="relationships"
-)
-
-aql = exporter.export(graph)                # returns AQL string
-exporter.export_to_file(graph, "import.aql")
-```
-
-## GraphExporter
-
-Export for visualization tools — GraphML, GEXF, and Graphviz DOT:
-
-```python
-from semantica.export import GraphExporter
-
-exporter = GraphExporter()
-
-exporter.export(graph, "graph.graphml", format="graphml")  # Gephi, yEd
-exporter.export(graph, "graph.gexf",    format="gexf")     # Gephi streaming
-exporter.export(graph, "graph.dot",     format="dot")      # Graphviz
-```
-
-## OWLExporter
-
-OWL 2.0 ontology export in three serialization formats:
-
-```python
-from semantica.export import OWLExporter
-
-exporter = OWLExporter()
-exporter.export(ontology, path="ontology.ttl",  format="turtle")
-exporter.export(ontology, path="ontology.owl",  format="xml")
-exporter.export(ontology, path="ontology.json", format="json-ld")
-```
-
-## CSVExporter
-
-Flat CSV export for spreadsheets and simple data pipelines:
-
-```python
-from semantica.export import CSVExporter
-
-exporter = CSVExporter(delimiter=",")
-exporter.export_nodes(graph, "nodes.csv")
-exporter.export_edges(graph, "edges.csv")
-```
-
-## VectorExporter
-
-Export embedding vectors for use in external vector stores:
-
-```python
-from semantica.export import VectorExporter
-
-exporter = VectorExporter()
-exporter.export(embeddings, metadata, "vectors.json",  format="json")
-exporter.export(embeddings, metadata, "vectors.npy",   format="numpy")
-exporter.export(embeddings, metadata, "vectors.faiss", format="faiss")
-```
-
-## ArrowExporter
-
-Apache Arrow IPC format for zero-copy inter-process transfer:
-
-```python
-from semantica.export import ArrowExporter
-
-exporter = ArrowExporter()
-exporter.export(graph, "graph.arrow")
-```
-
-Requires `pyarrow`. Falls back gracefully if not installed.
-
-## DistanceExporter
-
-Export semantic distance matrices produced by Distance Intelligence (v0.5.0):
-
-```python
-from semantica.export import DistanceExporter
-
-exporter = DistanceExporter()
-exporter.export_matrix(distance_matrix, node_labels, "distances.csv")
-exporter.export_ego(ego_neighborhood, center_node="Apple Inc.", path="ego.json")
-```
-
-## ReportGenerator
-
-Generate human-readable analytics reports from graph metrics:
-
-```python
-from semantica.export import ReportGenerator
-
-generator = ReportGenerator()
-
-generator.generate(graph, analytics_result, "report.html",     format="html")
-generator.generate(graph, analytics_result, "report.md",       format="markdown")
-generator.generate(graph, analytics_result, "report.json",     format="json")
+# Export nodes by type
+org_nodes = graph.filter(node_type="Organization")
+export_parquet(org_nodes, "organizations.parquet")
 ```
 
 ## Convenience Functions
@@ -212,17 +291,55 @@ export_arango(graph,  "import.aql")
 export_graph(graph,   "graph.graphml", format="graphml")
 ```
 
-## Selective Export
+## Format Reference
 
-```python
-# Export a subgraph
-subgraph = graph.subgraph(node_ids=["apple_inc", "steve_jobs"])
-export_rdf(subgraph, "subgraph.ttl", format="turtle")
+| Format | Exporter | Output | Best For |
+| ------ | -------- | ------ | -------- |
+| `turtle` | `RDFExporter` | `.ttl` | Readable RDF, ontology sharing |
+| `json-ld` | `RDFExporter` | `.jsonld` | APIs, Linked Data, JSON pipelines |
+| `nt` | `RDFExporter` | `.nt` | Streaming RDF, line-by-line processing |
+| `xml` | `RDFExporter` | `.xml` | W3C RDF/XML, broadest compatibility |
+| `parquet` | `ParquetExporter` | `.parquet` | Spark, BigQuery, Databricks, Snowflake |
+| `cypher` | `LPGExporter` | `.cypher` | Neo4j, Memgraph import |
+| `aql` | `ArangoAQLExporter` | `.aql` | ArangoDB vertex + edge collections |
+| `graphml` | `GraphExporter` | `.graphml` | Gephi, yEd visualization |
+| `gexf` | `GraphExporter` | `.gexf` | Gephi streaming format |
+| `dot` | `GraphExporter` | `.dot` | Graphviz rendering |
+| `owl` | `OWLExporter` | `.owl` / `.ttl` | OWL 2.0 ontology distribution |
+| `csv` | `CSVExporter` | `.csv` | Spreadsheets, simple pipelines |
+| `yaml` | `YAMLExporter` | `.yaml` | Human-readable, config-driven use |
+| `arrow` | `ArrowExporter` | `.arrow` | Zero-copy inter-process transfer |
+| `numpy` | `VectorExporter` | `.npy` | NumPy arrays from embeddings |
+| `faiss` | `VectorExporter` | `.faiss` | Direct FAISS index files |
+| `distance-matrix` | `DistanceExporter` | `.csv` / `.json` | Distance Intelligence matrices |
+| `html` | `ReportGenerator` | `.html` | Human-readable analytics reports |
+| `markdown` | `ReportGenerator` | `.md` | Documentation, GitHub |
 
-# Export nodes by type
-org_nodes = graph.filter(node_type="Organization")
-export_parquet(org_nodes, "organizations.parquet")
-```
+## Tips and Common Pitfalls
+
+<Tip>
+  **Use `turtle` for human readability, `nt` for streaming.** Turtle is compact and readable for debugging and sharing ontologies. N-Triples (`.nt`) is line-oriented — one triple per line — making it safe to stream, concatenate, and process with standard Unix tools without loading the full file.
+</Tip>
+
+<Tip>
+  **Use `ParquetExporter` for downstream analytics.** Parquet preserves column types (int, float, datetime) that CSV loses and is natively supported by Spark, BigQuery, Databricks, and Snowflake. Use `compression="snappy"` for a good balance of speed and compression ratio.
+</Tip>
+
+<Warning>
+  **Stream large graphs with `export_stream()`.** For graphs with more than 500k nodes, use `exporter.export_stream(graph, ...)` instead of `exporter.export_to_file()`. Streaming writes incrementally without buffering the full graph in memory — without it, a million-node export will likely OOM.
+</Warning>
+
+<Tip>
+  **Include provenance for compliance exports.** For HIPAA, SOX, or FDA 21 CFR Part 11 exports, pass `include_provenance=True` to `RDFExporter`. This embeds W3C PROV-O lineage triples inline — auditors can verify every fact's source from a single file rather than cross-referencing separate systems.
+</Tip>
+
+<Tip>
+  **Use selective export to reduce file size.** `graph.subgraph(node_ids=[...])` and `graph.filter(node_type="Organization")` let you export only the relevant subset. Full graph exports for compliance reports include noise; scoped exports are faster to produce, review, and transfer.
+</Tip>
+
+<Warning>
+  **Match your export format to your consumer.** Neo4j → `cypher`; ArangoDB → `aql`; Gephi/yEd → `graphml` or `gexf`; semantic web tools → `turtle` or `json-ld`; analytics pipelines → `parquet`; zero-copy IPC → `arrow`. Using the wrong format forces the consumer to convert it, adding latency and potential data loss.
+</Warning>
 
 <CardGroup cols={2}>
   <Card title="Triplet Store" icon="table" href="triplet_store">

@@ -439,41 +439,69 @@ python -m semantica.mcp_server
 
 ### Seed
 
-Deterministic data seeding for testing and development.
+Bootstrap knowledge graphs from verified structured sources — fixed-point reference data, controlled vocabularies, and domain anchors.
 
 ```python
 from semantica.seed import SeedManager
 
 seed = SeedManager()
 seed.populate(kg, dataset="companies", count=100)
+
+# Load domain seeds from file or built-in datasets
+seed.load_from_file("seed_data/industries.json")
+seed.inject(kg)   # merges seed nodes without duplicating existing entities
 ```
+
+**Use cases:** anchoring extraction with known entities, pre-populating ontology classes, deterministic test graph generation.
 
 ### Evals
 
-Evaluation harness for extraction and reasoning quality.
+Evaluation framework for measuring KG quality, extraction accuracy, and pipeline performance.
 
 ```python
-from semantica.evals import Evaluator
+from semantica.evals import KGEvaluator, ExtractionEvaluator, PipelineEvaluator, RegressionTracker
 
-evaluator = Evaluator()
-scores    = evaluator.evaluate(predicted_entities, ground_truth)
-# Returns: {"precision": 0.91, "recall": 0.87, "f1": 0.89}
+# KG quality
+report = KGEvaluator().evaluate(kg, ontology=ontology)
+print(f"Completeness: {report.completeness:.2%}  Consistency: {report.consistency:.2%}")
+
+# Extraction accuracy
+report = ExtractionEvaluator().evaluate_ner(predictions=extracted, gold_standard=annotated)
+print(f"Precision: {report.precision:.3f}  Recall: {report.recall:.3f}  F1: {report.f1:.3f}")
+
+# Pipeline throughput and latency
+metrics = PipelineEvaluator().benchmark(pipeline, data="data/", bench_runs=5)
+print(f"Throughput: {metrics.docs_per_second:.1f} docs/sec")
+
+# Regression tracking across runs
+tracker = RegressionTracker(db_path="eval_history.db")
+run_id  = tracker.record_run(pipeline_version="v1.2.0", metrics=metrics)
+diff    = tracker.compare(run_id, baseline_run_id="run_abc123")
 ```
 
-**Metrics:** precision, recall, F1 for NER, relation extraction, and reasoning
+**Components:** `KGEvaluator`, `ExtractionEvaluator`, `PipelineEvaluator`, `RegressionTracker`
 
 ### Core
 
 Base classes, shared data models, and the plugin registry used across all modules.
 
 ```python
-from semantica.core import Orchestrator, PluginRegistry
+from semantica.core import Semantica, PluginRegistry, ConfigManager
 
+# Top-level orchestrator
+sem = Semantica(config_path="config.yaml")
+sem.initialize()
+
+# Plugin registry — register custom components
 registry = PluginRegistry()
 registry.register("my_ingestor", MyCustomIngestor)
+
+# Config management
+config  = ConfigManager(config_path="config.yaml")
+batch   = config.get("processing.batch_size", default=32)
 ```
 
-**Components:** `Orchestrator`, `PluginRegistry`, `ConfigManager`, `Lifecycle`
+**Components:** `Semantica`, `PluginRegistry`, `ConfigManager`, `LifecycleManager`, `HealthMonitor`, `Config`
 
 ### Utils
 
@@ -504,8 +532,8 @@ from semantica.utils import helpers, validators, logging
 | [ingest](reference/ingest) | Data ingestion | `FileIngestor`, `WebIngestor`, `ParquetIngestor`, `XMLIngestor` |
 | [parse](reference/parse) | Document parsing | `DocumentParser`, `DoclingParser` |
 | [split](reference/split) | Text chunking | `TextSplitter` |
-| [normalize](reference/normalize) | Data cleaning | `DataNormalizer` |
-| [semantic_extract](reference/semantic_extract) | NER & relation extraction | `NERExtractor`, `RelationExtractor`, `TripletExtractor` |
+| [normalize](reference/normalize) | Data cleaning | `TextNormalizer`, `EntityNormalizer`, `LanguageDetector` |
+| [semantic_extract](reference/semantic_extract) | NER & relation extraction | `NERExtractor`, `RelationExtractor`, `TripletExtractor`, `SemanticAnalyzer`, `SemanticNetworkExtractor`, `ExtractionValidator` |
 | [kg](reference/kg) | Graph construction | `GraphBuilder`, `TemporalKnowledgeGraph`, `DistanceCalculator` |
 | [ontology](reference/ontology) | Schema management | `OntologyManager`, `SHACLGenerator` |
 | [reasoning](reference/reasoning) | Logical inference | `ReasoningEngine`, `DatalogEngine` |
@@ -513,7 +541,7 @@ from semantica.utils import helpers, validators, logging
 | [vector_store](reference/vector_store) | Vector database | `VectorStore` |
 | [graph_store](reference/graph_store) | Graph database | `GraphStore` |
 | [triplet_store](reference/triplet_store) | RDF triple store | `TripletStore` |
-| [deduplication](reference/deduplication) | Entity resolution | `EntityResolver`, `DuplicateDetector` |
+| [deduplication](reference/deduplication) | Entity resolution | `EntityResolver`, `DuplicateDetector`, `ClusterBuilder`, `MergeStrategyManager` |
 | [conflicts](reference/conflicts) | Conflict resolution | `ConflictDetector` |
 | [context](reference/context) | Agent context & decisions | `AgentContext`, `ContextGraph` |
 | [provenance](reference/provenance) | W3C PROV-O lineage | `ProvenanceManager` |
@@ -524,9 +552,9 @@ from semantica.utils import helpers, validators, logging
 | [explorer](reference/explorer) | Knowledge Explorer UI | `start_explorer` |
 | [llms](reference/llms) | LLM providers | `Groq`, `OpenAI`, `create_provider` |
 | [mcp_server](reference/mcp_server) | MCP stdio server | `python -m semantica.mcp_server` |
-| [seed](reference/seed) | Test data seeding | `SeedManager` |
-| [evals](reference/evals) | Quality evaluation | `Evaluator` |
-| [core](reference/core) | Base classes & registry | `Orchestrator`, `PluginRegistry` |
+| [seed](reference/seed) | KG bootstrapping from structured sources | `SeedManager` |
+| [evals](reference/evals) | Quality evaluation | `KGEvaluator`, `ExtractionEvaluator`, `PipelineEvaluator`, `RegressionTracker` |
+| [core](reference/core) | Base classes & registry | `Semantica`, `ConfigManager`, `PluginRegistry`, `LifecycleManager` |
 | [utils](reference/utils) | Shared utilities | `helpers`, `validators` |
 
 <CardGroup cols={2}>

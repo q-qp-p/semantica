@@ -8,20 +8,80 @@ icon: "diagram-project"
 
 ## What You Get
 
-- **`GraphBuilder`** — construct graphs from entities and relationships with automatic entity merging
-- **`TemporalKnowledgeGraph`** — time-aware edges (`valid_from`/`valid_until`) and point-in-time queries (v0.4.0)
-- **`DistanceCalculator`** — semantic neighborhoods, N×N distance matrices, and distance band classification (v0.5.0)
-- **`CentralityCalculator`** — PageRank, degree, betweenness, closeness, eigenvector centrality
-- **`CommunityDetector`** — Louvain, Leiden, Label Propagation, K-Clique community detection
-- **`PathFinder`** — Dijkstra, A\*, BFS, K-Shortest path algorithms
-- **`LinkPredictor`** — Preferential Attachment, Jaccard, Adamic-Adar link prediction
-- **`NodeEmbedder`** — Node2Vec, DeepWalk, Word2Vec structural embeddings
+<CardGroup cols={2}>
+  <Card title="GraphBuilder" icon="hammer">
+    Construct graphs from entities and relationships with automatic entity merging.
+  </Card>
+  <Card title="TemporalKnowledgeGraph" icon="clock">
+    Time-aware edges (`valid_from`/`valid_until`) and point-in-time queries (v0.4.0).
+  </Card>
+  <Card title="DistanceCalculator" icon="ruler">
+    Semantic neighborhoods, N×N distance matrices, and distance band classification (v0.5.0).
+  </Card>
+  <Card title="CentralityCalculator" icon="star">
+    PageRank, degree, betweenness, closeness, and eigenvector centrality.
+  </Card>
+  <Card title="CommunityDetector" icon="users">
+    Louvain, Leiden, Label Propagation, and K-Clique community detection.
+  </Card>
+  <Card title="PathFinder" icon="route">
+    Dijkstra, A\*, BFS, and K-Shortest path algorithms.
+  </Card>
+</CardGroup>
 
 <Tip>
   For conflict detection and advanced entity resolution, use `semantica.conflicts` and `semantica.deduplication` alongside this module.
 </Tip>
 
 <img src="/assets/img/diagrams/kg-structure.svg" alt="Knowledge graph entity and relation structure: Person, Organization, Location, Date nodes with typed labeled edges" style={{ width: '100%', borderRadius: '12px', margin: '0 0 24px' }} />
+
+## Quick Start
+
+<Steps>
+  <Step title="Build the graph from extracted entities and relationships">
+    ```python
+    from semantica.kg import GraphBuilder
+
+    builder = GraphBuilder(merge_entities=True)
+    kg      = builder.build(entities=entities, relationships=relationships)
+
+    print(f"Nodes: {kg.node_count}, Edges: {kg.edge_count}")
+    ```
+  </Step>
+  <Step title="Run centrality analysis to find key nodes">
+    ```python
+    from semantica.kg import CentralityCalculator
+
+    calc     = CentralityCalculator()
+    pagerank = calc.calculate_pagerank(kg, damping_factor=0.85)
+    top_10   = calc.get_top_nodes(pagerank, top_k=10)
+
+    for node_id, score in top_10:
+        print(f"  {node_id}: {score:.4f}")
+    ```
+  </Step>
+  <Step title="Detect thematic communities">
+    ```python
+    from semantica.kg import CommunityDetector
+
+    detector    = CommunityDetector()
+    communities = detector.detect_communities(kg, algorithm="louvain")
+    metrics     = detector.calculate_community_metrics(kg, communities)
+
+    print(f"Communities: {len(communities)}")
+    ```
+  </Step>
+  <Step title="Persist to a graph database">
+    ```python
+    from semantica.graph_store import GraphStore
+
+    store = GraphStore(backend="neo4j", uri="bolt://localhost:7687",
+                       user="neo4j", password="password")
+    store.add_nodes_bulk(kg.entities,      batch_size=1000)
+    store.add_edges_bulk(kg.relationships, batch_size=1000)
+    ```
+  </Step>
+</Steps>
 
 ## GraphBuilder
 
@@ -31,7 +91,7 @@ Constructs knowledge graphs from extracted entities and relationships:
 from semantica.kg import GraphBuilder
 
 builder = GraphBuilder(merge_entities=True)
-kg = builder.build(entities=entities, relationships=relationships)
+kg      = builder.build(entities=entities, relationships=relationships)
 ```
 
 | Method | Description |
@@ -39,6 +99,10 @@ kg = builder.build(entities=entities, relationships=relationships)
 | `build(sources)` | Build graph from multiple data sources |
 | `build_single_source(data)` | Build graph from a single data source |
 | `merge_entities()` | Deduplicate and merge entities during construction |
+
+<Warning>
+  Always use `merge_entities=True` in production. Without it, "Steve Jobs" extracted from five different documents creates five separate person nodes. `GraphBuilder(merge_entities=True)` uses edit distance matching to consolidate them at build time.
+</Warning>
 
 ## Temporal Knowledge Graphs (v0.4.0)
 
@@ -50,7 +114,6 @@ from datetime import datetime
 
 tkg = TemporalKnowledgeGraph()
 
-# Nodes and edges carry explicit validity windows
 tkg.add_node("ceo_role",  valid_from=datetime(2020, 1, 1), valid_until=datetime(2023, 6, 1))
 tkg.add_edge(
     "alice", "acme_corp", "ceo_of",
@@ -61,15 +124,17 @@ tkg.add_edge(
 # Point-in-time snapshot
 snapshot = tkg.at(datetime(2021, 6, 15))
 
-# Diff between two snapshots
-query = TemporalGraphQuery(tkg)
-snapshot_2020 = query.at_time("2020-01-01")
-snapshot_2023 = query.at_time("2023-01-01")
-diff = snapshot_2023.minus(snapshot_2020)
-print(f"New nodes since 2020: {len(diff.nodes)}")
+# Query and diff via TemporalGraphQuery
+query         = TemporalGraphQuery(tkg)
+snap_2020     = query.query_at_time(datetime(2020, 1, 1))
+snap_2023     = query.query_at_time(datetime(2023, 1, 1))
+added         = [r for r in snap_2023.relationships if r not in snap_2020.relationships]
+print(f"New edges since 2020: {len(added)}")
 ```
 
-Supports all 13 Allen interval algebra relations (before, after, meets, overlaps, during, starts, finishes, equals, and their inverses). OWL-Time export available.
+<Note>
+  Edges added without `valid_from`/`valid_until` are treated as **always-valid**. For historical data, always attach timestamps — otherwise point-in-time queries return misleading results.
+</Note>
 
 ## Distance Intelligence (v0.5.0)
 
@@ -90,101 +155,194 @@ matrix = calc.distance_matrix(["Apple Inc.", "Google", "Microsoft"])
 bands = calc.classify_bands(neighborhood)
 ```
 
+<Warning>
+  `DistanceCalculator` is expensive at large scale — the N×N matrix requires embedding all entities and computing pairwise cosine similarities. Cache the result between runs and only recompute for changed entities.
+</Warning>
+
 ## Graph Analytics
 
-### Centrality Analysis
+<Tabs>
+  <Tab title="Centrality">
+    Identify the most structurally important nodes in your graph:
 
-```python
-from semantica.kg import CentralityCalculator
+    ```python
+    from semantica.kg import CentralityCalculator
 
-calculator = CentralityCalculator()
+    calc = CentralityCalculator()
 
-centrality    = calculator.calculate_degree_centrality(graph)
-pagerank      = calculator.calculate_pagerank(graph, damping_factor=0.85)
-betweenness   = calculator.calculate_betweenness_centrality(graph)
-closeness     = calculator.calculate_closeness_centrality(graph)
-eigenvector   = calculator.calculate_eigenvector_centrality(graph)
-all_metrics   = calculator.calculate_all_centrality(graph)
+    pagerank    = calc.calculate_pagerank(kg, damping_factor=0.85)
+    degree      = calc.calculate_degree_centrality(kg)
+    betweenness = calc.calculate_betweenness_centrality(kg)
+    closeness   = calc.calculate_closeness_centrality(kg)
+    eigenvector = calc.calculate_eigenvector_centrality(kg)
+    all_metrics = calc.calculate_all_centrality(kg)
 
-top_nodes = calculator.get_top_nodes(centrality, top_k=10)
-```
+    top_nodes = calc.get_top_nodes(pagerank, top_k=10)
+    ```
 
-| Method | Algorithm |
-| ------ | --------- |
-| `calculate_degree_centrality()` | Degree-based importance |
-| `calculate_betweenness_centrality()` | Bridge-based importance (bottleneck nodes) |
-| `calculate_closeness_centrality()` | Distance-based importance |
-| `calculate_eigenvector_centrality()` | Influence-based importance |
-| `calculate_pagerank()` | Link-based importance (PageRank) |
-| `calculate_all_centrality()` | All measures at once |
+    | Measure | Best For |
+    | ------- | -------- |
+    | PageRank | Overall importance (link-based) |
+    | Degree | Most connected nodes |
+    | Betweenness | Bridge / bottleneck nodes |
+    | Closeness | Fastest to reach all others |
+    | Eigenvector | Connected to other important nodes |
+  </Tab>
+  <Tab title="Community Detection">
+    Partition the graph into thematically dense clusters:
 
-### Community Detection
+    ```python
+    from semantica.kg import CommunityDetector
 
-```python
-from semantica.kg import CommunityDetector
+    detector = CommunityDetector()
 
-detector = CommunityDetector()
+    # Louvain — fast, high quality (default)
+    communities = detector.detect_communities(kg, algorithm="louvain")
 
-# Louvain (default — fast, high quality)
-communities = detector.detect_communities(graph, algorithm="louvain")
+    # Leiden — higher quality, slower
+    leiden_communities = detector.detect_communities_leiden(kg, resolution=1.2)
 
-# Leiden (higher quality, slower)
-leiden_communities = detector.detect_communities_leiden(graph, resolution=1.2)
+    metrics = detector.calculate_community_metrics(kg, communities)
+    print(f"Communities: {len(communities)}")
+    ```
 
-metrics = detector.calculate_community_metrics(graph, communities)
-```
+    Algorithms available: **Louvain**, **Leiden**, **Label Propagation**, **K-Clique Communities**.
 
-Algorithms: Louvain, Leiden, Label Propagation, K-Clique Communities.
+    <Tip>
+      Community detection finds thematic clusters — often corresponding to real-world subject groups. Use cluster membership as context boundaries for GraphRAG retrieval.
+    </Tip>
+  </Tab>
+  <Tab title="Path Finding">
+    Find shortest and alternative paths between nodes:
 
-### Path Finding
+    ```python
+    from semantica.kg import PathFinder
 
-```python
-from semantica.kg import PathFinder
+    finder = PathFinder()
 
-finder = PathFinder()
+    path    = finder.dijkstra_shortest_path(kg, "node_a", "node_b")
+    paths   = finder.all_shortest_paths(kg, "source", "target")
+    k_paths = finder.find_k_shortest_paths(kg, "source", "target", k=3)
+    ```
 
-path   = finder.dijkstra_shortest_path(graph, "node_a", "node_b")
-paths  = finder.all_shortest_paths(graph, "source", "target")
-k_paths = finder.find_k_shortest_paths(graph, "source", "target", k=3)
-```
+    Algorithms: **Dijkstra**, **A\***, **BFS**, **All Shortest Paths**, **K-Shortest Paths**.
+  </Tab>
+  <Tab title="Connectivity">
+    Analyse graph structure — components, bridges, and density:
 
-Algorithms: Dijkstra, A\*, BFS, All Shortest Paths, K-Shortest Paths.
+    ```python
+    from semantica.kg import ConnectivityAnalyzer
 
-### Link Prediction
+    analyzer   = ConnectivityAnalyzer()
+    components = analyzer.find_connected_components(kg)
+    density    = analyzer.calculate_density(kg)
+    bridges    = analyzer.find_bridges(kg)
 
-```python
-from semantica.kg import LinkPredictor
+    print(f"Components: {len(components)}, Largest: {len(components[0])} nodes")
+    print(f"Density:    {density:.4f}")
+    print(f"Bridges:    {bridges}")
+    ```
 
-predictor = LinkPredictor(method="preferential_attachment")
-links = predictor.predict_links(graph, top_k=20)
-score = predictor.score_link(graph, "node_a", "node_b")
-```
+    | Method | Returns | Description |
+    | ------ | ------- | ----------- |
+    | `find_connected_components(kg)` | `List[List[str]]` | Groups of mutually reachable nodes |
+    | `calculate_density(kg)` | `float` | Edge density (actual / possible edges) |
+    | `find_bridges(kg)` | `List[str]` | Nodes whose removal disconnects the graph |
+  </Tab>
+  <Tab title="Link Prediction">
+    Predict which edges are likely missing from the graph:
 
-Algorithms: Preferential Attachment, Common Neighbors, Jaccard, Adamic-Adar, Resource Allocation.
+    ```python
+    from semantica.kg import LinkPredictor
 
-### Node Embeddings
+    predictor = LinkPredictor(method="preferential_attachment")
+    links     = predictor.predict_links(kg, top_k=20)
+    score     = predictor.score_link(kg, "node_a", "node_b")
+    ```
 
-```python
-from semantica.kg import NodeEmbedder
+    Algorithms: **Preferential Attachment**, **Common Neighbors**, **Jaccard**, **Adamic-Adar**, **Resource Allocation**.
+  </Tab>
+  <Tab title="Node Embeddings">
+    Compute structural embeddings for similarity search and downstream ML:
 
-embedder = NodeEmbedder(method="node2vec", embedding_dimension=128)
-embeddings   = embedder.compute_embeddings(graph_store, ["Entity"], ["RELATED_TO"])
-similar_nodes = embedder.find_similar_nodes(graph_store, "entity_123", top_k=10)
-```
+    ```python
+    from semantica.kg import NodeEmbedder
 
-Algorithms: Node2Vec, DeepWalk, Word2Vec.
+    embedder      = NodeEmbedder(method="node2vec", embedding_dimension=128)
+    embeddings    = embedder.compute_embeddings(graph_store, ["Entity"], ["RELATED_TO"])
+    similar_nodes = embedder.find_similar_nodes(graph_store, "entity_123", top_k=10)
+    ```
+
+    Algorithms: **Node2Vec**, **DeepWalk**, **Word2Vec**.
+  </Tab>
+</Tabs>
 
 ## Algorithm Summary
 
 | Category | Algorithms | Use Cases |
 | -------- | ---------- | --------- |
 | Node Embeddings | Node2Vec, DeepWalk, Word2Vec | Structural similarity, node representation |
-| Similarity | Cosine, Euclidean, Manhattan, Correlation | Node matching, recommendation |
 | Path Finding | Dijkstra, A\*, BFS, K-Shortest | Route planning, network analysis |
 | Link Prediction | Preferential Attachment, Jaccard, Adamic-Adar | Network completion |
 | Centrality | Degree, Betweenness, Closeness, PageRank | Influence analysis |
 | Community Detection | Louvain, Leiden, Label Propagation | Social clustering |
 | Connectivity | Components, Bridges, Density | Network robustness |
+
+## SeedManager
+
+Load and inject curated seed data into a knowledge graph:
+
+```python
+from semantica.kg import SeedManager
+
+manager    = SeedManager()
+seed_data  = manager.load_seed("seeds/domain_entities.json")
+normalized = manager.normalize(seed_data, source="manual_curation_v1")
+
+builder = GraphBuilder(merge_entities=True)
+kg      = builder.build(normalized + extracted_sources)
+```
+
+## MethodRegistry
+
+Register custom KG construction methods and dispatch by name:
+
+```python
+from semantica.kg import method_registry
+
+def my_kg_builder(entities, relationships, **kwargs):
+    filtered = [e for e in entities if e["confidence"] >= 0.9]
+    return {"entities": filtered, "relationships": relationships}
+
+method_registry.register("build", "high_confidence", my_kg_builder)
+
+from semantica.kg import build_knowledge_graph
+kg = build_knowledge_graph(sources, method="high_confidence")
+```
+
+## ProvenanceTracker
+
+Track entity and relationship lineage within a knowledge graph:
+
+```python
+from semantica.kg import ProvenanceTracker
+
+tracker = ProvenanceTracker()
+
+tracker.track_entity(
+    entity_id="apple_inc",
+    source="sec_filing_2024q1.pdf",
+    source_location="page 3, paragraph 2",
+    source_quote="Apple Inc. reported revenue of...",
+    confidence=0.98,
+)
+
+lineage = tracker.get_lineage("apple_inc")
+for entry in lineage.entries:
+    print(f"  Source: {entry.source}  ({entry.timestamp})")
+```
+
+For full W3C PROV-O compliance and provenance export, see the [Provenance module](provenance).
 
 ## Configuration
 
@@ -198,6 +356,24 @@ kg:
     enabled: true
     default_validity: infinite
 ```
+
+## Tips and Common Pitfalls
+
+<Warning>
+  **Deduplicate before `GraphBuilder`, not after.** It's far easier to merge entities before they become nodes than to update all relationship endpoints after the fact. Run `DuplicateDetector` on extracted entities before calling `builder.build()`.
+</Warning>
+
+<Tip>
+  **PageRank identifies your most connected, important nodes.** If you're not sure which entities in your graph are the most structurally significant, `CentralityCalculator.calculate_pagerank()` gives you a ranked list — useful for GraphRAG context anchoring.
+</Tip>
+
+<Tip>
+  **Community detection finds thematic clusters.** `CommunityDetector` with Louvain partitions your graph into clusters of densely-connected nodes — often corresponding to real-world thematic groups. Use these clusters for exploratory analysis and to scope GraphRAG retrieval.
+</Tip>
+
+<Tip>
+  **`ProvenanceTracker` links entities back to their source documents.** Use it during graph construction so you can always answer "where did this fact come from?" — critical for compliance and for debugging incorrect graph data.
+</Tip>
 
 <CardGroup cols={2}>
   <Card title="Graph Store" icon="server" href="graph_store">

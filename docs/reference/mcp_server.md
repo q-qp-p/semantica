@@ -6,15 +6,32 @@ icon: "plug"
 
 `semantica.mcp_server` exposes Semantica's knowledge graph, decision intelligence, semantic extraction, and reasoning capabilities as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server over stdio.
 
+Once configured, any connected AI assistant can extract entities, record decisions, query the graph, run reasoning, and export results — without writing a single line of Python.
+
 Compatible with **Claude Desktop**, **Windsurf**, **Cline**, **Continue**, **VS Code**, **Roo Code**, **Cursor**, and any MCP-aware client.
 
 ## What You Get
 
-- **12 MCP tools** — extract entities, build graphs, run SPARQL, find paths, get recommendations, embed, cluster, and more
-- **3 readable resources** — live graph JSON, entity list, and relationship list
-- **Zero infrastructure** — runs over stdio, no server or port needed
-- **Claude Desktop ready** — one config block to add to `claude_desktop_config.json`
-- **REST alternative** — the Explorer module offers a full HTTP API if you prefer
+<CardGroup cols={2}>
+  <Card title="12 MCP Tools" icon="wrench">
+    Extract entities, extract relations, record decisions, query decisions, find precedents, trace causal chains, add entities, add relationships, run analytics, summarise graph, run reasoning, export.
+  </Card>
+  <Card title="3 Readable Resources" icon="book-open">
+    Live graph JSON (`semantica://graph/summary`), decision list, and schema/version info — readable by any MCP client.
+  </Card>
+  <Card title="Zero Infrastructure" icon="bolt">
+    Runs over stdio — no server, no port, no Docker required. One config block to activate in any MCP client.
+  </Card>
+  <Card title="Persistent Graphs" icon="database">
+    Point `SEMANTICA_KG_PATH` at a saved graph file to reload it automatically on every server startup.
+  </Card>
+  <Card title="Decision Intelligence" icon="brain">
+    Record decisions, find precedents via hybrid similarity search, and trace causal chains across agent runs.
+  </Card>
+  <Card title="REST Alternative" icon="globe">
+    The [Explorer](explorer) module offers a full HTTP API and browser dashboard if you prefer programmatic access.
+  </Card>
+</CardGroup>
 
 ## Installation
 
@@ -26,46 +43,86 @@ The MCP server is included in the base install — no extras required.
 
 ## Configuration
 
-Add Semantica to your MCP client's settings file:
+<Steps>
+  <Step title="Find your MCP client's settings file">
 
-<CodeGroup>
+    | Client | Settings file |
+    | ------ | ------------- |
+    | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+    | Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
+    | Cursor | `.cursor/mcp.json` in your project, or `~/.cursor/mcp.json` globally |
+    | VS Code / Continue | `.vscode/mcp.json` or user settings |
+    | Windsurf / Cline / Roo Code | App-specific settings → MCP Servers |
 
-```json Claude Desktop / Windsurf / Cline
-{
-  "mcpServers": {
-    "semantica": {
-      "command": "semantica-mcp"
-    }
-  }
-}
-```
+  </Step>
+  <Step title="Add the Semantica MCP server config">
 
-```json VS Code / Continue / Roo Code
-{
-  "mcpServers": {
-    "semantica": {
-      "command": "python",
-      "args": ["-m", "semantica.mcp_server"]
-    }
-  }
-}
-```
+    <CodeGroup>
 
-```json With persistent graph
-{
-  "mcpServers": {
-    "semantica": {
-      "command": "semantica-mcp",
-      "env": {
-        "SEMANTICA_KG_PATH": "/path/to/my_graph.json",
-        "SEMANTICA_LOG_LEVEL": "INFO"
+    ```json Claude Desktop / Windsurf / Cline
+    {
+      "mcpServers": {
+        "semantica": {
+          "command": "semantica-mcp"
+        }
       }
     }
-  }
-}
-```
+    ```
 
-</CodeGroup>
+    ```json Cursor
+    {
+      "mcpServers": {
+        "semantica": {
+          "command": "semantica-mcp",
+          "env": {
+            "SEMANTICA_KG_PATH": "/path/to/my_graph.json"
+          }
+        }
+      }
+    }
+    ```
+
+    ```json VS Code / Continue / Roo Code
+    {
+      "mcpServers": {
+        "semantica": {
+          "command": "python",
+          "args": ["-m", "semantica.mcp_server"]
+        }
+      }
+    }
+    ```
+
+    ```json With persistent graph
+    {
+      "mcpServers": {
+        "semantica": {
+          "command": "semantica-mcp",
+          "env": {
+            "SEMANTICA_KG_PATH": "/path/to/my_graph.json",
+            "SEMANTICA_LOG_LEVEL": "INFO"
+          }
+        }
+      }
+    }
+    ```
+
+    </CodeGroup>
+
+  </Step>
+  <Step title="Test locally before configuring your client">
+    ```bash
+    # Run the server directly (reads from stdin, writes to stdout)
+    semantica-mcp
+
+    # Or via Python module
+    python -m semantica.mcp_server
+
+    # Send a JSON-RPC initialize message to confirm it's working
+    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | semantica-mcp
+    ```
+  </Step>
+</Steps>
 
 ## Environment Variables
 
@@ -78,6 +135,21 @@ Add Semantica to your MCP client's settings file:
 
 The MCP server exposes 12 tools that any connected AI assistant can call:
 
+| Tool | Category | Description |
+| ---- | -------- | ----------- |
+| `extract_entities` | Extraction | NER — find people, places, organisations, concepts |
+| `extract_relations` | Extraction | Typed relation and triplet extraction |
+| `record_decision` | Decision Intelligence | Save a decision with reasoning and outcome |
+| `query_decisions` | Decision Intelligence | Search recorded decisions by natural language |
+| `find_precedents` | Decision Intelligence | Hybrid similarity search over past decisions |
+| `get_causal_chain` | Decision Intelligence | Trace upstream / downstream causal chains |
+| `add_entity` | Graph Operations | Add a node to the live graph |
+| `add_relationship` | Graph Operations | Add a directed edge between two nodes |
+| `get_graph_analytics` | Graph Operations | PageRank + community detection |
+| `get_graph_summary` | Graph Operations | Node count, decision count, health status |
+| `run_reasoning` | Reasoning & Export | Forward-chain IF/THEN rules over facts |
+| `export_graph` | Reasoning & Export | Serialise the graph (Turtle, JSON-LD, JSON, etc.) |
+
 ### Knowledge Extraction
 
 <AccordionGroup>
@@ -87,11 +159,13 @@ The MCP server exposes 12 tools that any connected AI assistant can call:
 Extract named entities (people, places, organisations, concepts) from text using Semantica NER.
 
 **Input:**
+
 ```json
 { "text": "Apple Inc. was founded by Steve Jobs in Cupertino in 1976." }
 ```
 
 **Output:**
+
 ```json
 {
   "entities": [
@@ -110,11 +184,13 @@ Extract named entities (people, places, organisations, concepts) from text using
 Extract typed relations and `(subject, predicate, object)` triplets from text.
 
 **Input:**
+
 ```json
 { "text": "Steve Jobs founded Apple Inc. and led it until 2011." }
 ```
 
 **Output:**
+
 ```json
 {
   "relations": [
@@ -139,6 +215,7 @@ Extract typed relations and `(subject, predicate, object)` triplets from text.
 Record a decision with full context, reasoning, and metadata into the knowledge graph.
 
 **Input:**
+
 ```json
 {
   "category": "model_selection",
@@ -151,6 +228,7 @@ Record a decision with full context, reasoning, and metadata into the knowledge 
 ```
 
 **Output:**
+
 ```json
 { "decision_id": "dec_a1b2c3", "status": "recorded" }
 ```
@@ -162,6 +240,7 @@ Record a decision with full context, reasoning, and metadata into the knowledge 
 Query recorded decisions by natural language, category, or retrieve all recent decisions.
 
 **Input:**
+
 ```json
 { "query": "model selection", "limit": 5 }
 ```
@@ -173,6 +252,7 @@ Query recorded decisions by natural language, category, or retrieve all recent d
 Find past decisions similar to a given scenario using hybrid similarity search.
 
 **Input:**
+
 ```json
 { "scenario": "Choose cloud provider for HIPAA workload", "max_results": 3 }
 ```
@@ -184,6 +264,7 @@ Find past decisions similar to a given scenario using hybrid similarity search.
 Trace the causal chain upstream or downstream from a decision.
 
 **Input:**
+
 ```json
 { "decision_id": "dec_a1b2c3", "direction": "downstream", "max_depth": 5 }
 ```
@@ -201,6 +282,7 @@ Trace the causal chain upstream or downstream from a decision.
 Add a node/entity to the live knowledge graph.
 
 **Input:**
+
 ```json
 {
   "id": "apple_inc",
@@ -217,6 +299,7 @@ Add a node/entity to the live knowledge graph.
 Add a directed relationship (edge) between two existing entities.
 
 **Input:**
+
 ```json
 {
   "source": "steve_jobs",
@@ -251,6 +334,7 @@ Return node count, decision count, and graph health status.
 Run forward-chaining IF/THEN rules over a set of facts to derive new facts.
 
 **Input:**
+
 ```json
 {
   "facts": ["Employee(John)", "Manager(John)"],
@@ -259,6 +343,7 @@ Run forward-chaining IF/THEN rules over a set of facts to derive new facts.
 ```
 
 **Output:**
+
 ```json
 { "derived_facts": ["HasAuthority(John)"] }
 ```
@@ -270,6 +355,7 @@ Run forward-chaining IF/THEN rules over a set of facts to derive new facts.
 Export the current knowledge graph to a serialization format.
 
 **Input:**
+
 ```json
 { "format": "json-ld" }
 ```
@@ -282,7 +368,7 @@ Supported formats: `turtle`, `ttl`, `nt`, `xml`, `json-ld`, `json`.
 
 ## Resources
 
-The MCP server also exposes three readable resources:
+The MCP server exposes three readable resources:
 
 | URI | Description |
 | --- | ----------- |
@@ -290,21 +376,27 @@ The MCP server also exposes three readable resources:
 | `semantica://decisions/list` | All recorded decisions (up to 50) |
 | `semantica://schema/info` | Server version and available tools |
 
-## Test Locally
+## Tips and Common Pitfalls
 
-```bash
-# Run the server directly (reads from stdin, writes to stdout)
-semantica-mcp
+<Warning>
+  **Build the `ContextGraph` before starting the server.** The MCP server operates on a pre-built `ContextGraph` — it doesn't build the knowledge graph on demand. Construct and populate the graph first (ingest → extract → build KG → set `ContextGraph`), then pass it to `SemanticaMCPServer`. An empty or None graph results in empty query responses.
+</Warning>
 
-# Or via Python module
-python -m semantica.mcp_server
-```
+<Tip>
+  **Use `decision_tracking=True` for accountable agents.** Without decision tracking, `record_decision` and `query_decisions` calls succeed but nothing is stored. Enable it in the `ContextGraph` constructor when you want agents' decisions to be queryable for audit, compliance, or iterative reasoning.
+</Tip>
 
-Send a JSON-RPC `initialize` message to confirm it's working:
+<Tip>
+  **Use `find_precedents` before high-stakes decisions.** The tool performs hybrid similarity search across all recorded decisions. Call it at the start of any significant decision path — it surfaces past reasoning that may be directly applicable, reducing redundant work and improving consistency across agent runs.
+</Tip>
 
-```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | semantica-mcp
-```
+<Warning>
+  **Configure your MCP client's `command` field exactly.** The `command` field must point to the exact executable path (use `which semantica-mcp` on macOS/Linux to find it). A wrong path fails silently — the server just doesn't appear in the tools list. Test with the raw `echo | semantica-mcp` command first to confirm the binary works.
+</Warning>
+
+<Warning>
+  **The server communicates over stdio — don't add logging to stdout.** Any `print()` or logger output directed to stdout will corrupt the JSON-RPC message stream. Configure logging to write to a file or stderr only (`logging.basicConfig(filename="mcp.log")`). The MCP protocol assumes stdout carries only JSON-RPC frames.
+</Warning>
 
 <CardGroup cols={2}>
   <Card title="Context" icon="brain" href="context">
