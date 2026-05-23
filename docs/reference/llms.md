@@ -6,6 +6,15 @@ icon: "microchip"
 
 `semantica.llms` provides a single consistent API across 8+ LLM providers. Every provider is a drop-in replacement for the `llm_provider=` parameter in extractors, reasoning engines, and agents.
 
+## What You Get
+
+- **8+ provider integrations** — Groq, OpenAI, Anthropic, Gemini, Ollama, DeepSeek, Novita AI, LiteLLM, HuggingFace
+- **Unified `LLMProvider` interface** — swap providers with a one-line change, no application changes needed
+- **`ProviderFactory`** — instantiate any provider by name from a config dict
+- **Local models** — Ollama and HuggingFace run fully on-premise with no API key
+- **Streaming** — token-by-token output for low-latency UX
+- **Custom gateways** — point any OpenAI-compatible endpoint via `base_url`
+
 ## Providers
 
 <CodeGroup>

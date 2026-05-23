@@ -6,6 +6,14 @@ icon: "map"
 
 `semantica.explorer` is a browser-based dashboard for exploring knowledge graphs, managing ontologies, and running visual analyses — no code required after launch.
 
+## What You Get
+
+- **Graph Explorer** — interactive node/edge search, filtering, path highlighting, and neighborhood views
+- **Ontology Hub** (v0.5.0) — browse class hierarchies, infer types, run SHACL validation, align ontologies
+- **Distance Intelligence** (v0.5.0) — semantic similarity search, ego-mode neighborhood views, distance heatmaps
+- **REST API** — 15+ endpoints for graph data, path finding, embeddings, and semantic search
+- **CLI launcher** — `semantica-explorer` command for quick local startup
+
 ## Installation
 
 ```bash

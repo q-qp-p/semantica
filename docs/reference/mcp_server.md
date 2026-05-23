@@ -8,6 +8,14 @@ icon: "plug"
 
 Compatible with **Claude Desktop**, **Windsurf**, **Cline**, **Continue**, **VS Code**, **Roo Code**, **Cursor**, and any MCP-aware client.
 
+## What You Get
+
+- **12 MCP tools** — extract entities, build graphs, run SPARQL, find paths, get recommendations, embed, cluster, and more
+- **3 readable resources** — live graph JSON, entity list, and relationship list
+- **Zero infrastructure** — runs over stdio, no server or port needed
+- **Claude Desktop ready** — one config block to add to `claude_desktop_config.json`
+- **REST alternative** — the Explorer module offers a full HTTP API if you prefer
+
 ## Installation
 
 ```bash
