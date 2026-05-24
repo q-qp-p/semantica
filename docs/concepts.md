@@ -148,18 +148,27 @@ Inferred: Steve Jobs has a connection to Cupertino
     Applies IF/THEN rules repeatedly until no new facts can be derived. Best for alert systems, compliance checks, and trigger-based workflows.
 
     ```python
-    from semantica.reasoning import ReasoningEngine
+    from semantica.reasoning import Reasoner, Rule, Fact, RuleType
 
-    engine = ReasoningEngine(llm_provider=llm)
-    result = engine.reason(facts=kg, rules=rule_set, method="forward_chaining")
+    engine = Reasoner()
+    engine.add_fact(Fact(subject="Alice", predicate="is_a", obj="Manager"))
+    engine.add_rule(Rule(
+        rule_type=RuleType.FORWARD_CHAIN,
+        conditions=[{"subject": "?x", "predicate": "is_a", "object": "Manager"}],
+        conclusion={"subject": "?x", "predicate": "has_authority", "object": "true"}
+    ))
+    result = engine.infer()
     ```
   </Tab>
   <Tab title="Rete Network">
     Efficient pattern matching for large rule sets — the Rete algorithm avoids re-evaluating rules whose preconditions haven't changed. Best for thousands of rules over millions of facts.
 
     ```python
-    engine = ReasoningEngine(llm_provider=llm)
-    result = engine.reason(facts=kg, rules=rule_set, method="rete")
+    from semantica.reasoning import ReteEngine
+
+    engine = ReteEngine()
+    engine.load_rules("rules/domain_rules.json")
+    results = engine.run(kg)
     ```
   </Tab>
   <Tab title="Deductive & Abductive">
@@ -168,18 +177,24 @@ Inferred: Steve Jobs has a connection to Cupertino
     **Abductive** — infers the most likely explanation for observed evidence. Best for diagnostic and investigative use cases.
 
     ```python
-    result = engine.reason(facts=kg, rules=rule_set, method="deductive")
-    result = engine.reason(facts=kg, rules=rule_set, method="abductive")
+    from semantica.reasoning import GraphReasoner
+
+    graph_reasoner = GraphReasoner(kg)
+    graph_reasoner.add_rule({"if": [{"subject": "?a", "predicate": "parent_of", "object": "?b"}], "then": {"subject": "?a", "predicate": "ancestor_of", "object": "?b"}})
+    inferences = graph_reasoner.infer(kg)
     ```
   </Tab>
   <Tab title="Datalog (v0.4.0)">
     Recursive Horn clause rules with fixpoint semantics — handles transitive closure and recursive relationships that forward chaining cannot express.
 
     ```python
-    from semantica.reasoning import DatalogReasoner
+    from semantica.reasoning import DatalogReasoner, DatalogFact, DatalogRule
 
     reasoner = DatalogReasoner()
-    result   = reasoner.reason(facts=kg, rules=datalog_rules)
+    reasoner.add_fact(DatalogFact("parent", ("alice", "bob")))
+    reasoner.add_rule(DatalogRule("ancestor(?X, ?Y) :- parent(?X, ?Y)."))
+    reasoner.evaluate()
+    results = reasoner.query("ancestor(alice, ?Z)")
     ```
   </Tab>
   <Tab title="Engine Comparison">
@@ -203,14 +218,13 @@ All engines produce **explainable inference paths** — not black-box conclusion
 Knowledge changes over time. Temporal graphs attach `valid_from` / `valid_until` windows to nodes and edges, enabling point-in-time queries and historical analysis.
 
 ```python
-from semantica.kg import TemporalKnowledgeGraph
+from semantica.kg import TemporalGraphQuery
 from datetime import datetime
 
-tkg = TemporalKnowledgeGraph()
-tkg.add_node("ceo_role", valid_from=datetime(2020, 1, 1), valid_until=datetime(2023, 6, 1))
+query_engine = TemporalGraphQuery(enable_temporal_reasoning=True)
 
 # Query the graph as it existed on a specific date
-snapshot = tkg.at(datetime(2021, 6, 15))
+snapshot = query_engine.query_at_time(kg, query="", at_time=datetime(2021, 6, 15))
 ```
 
 **Supported features:** Allen interval algebra (all 13 temporal relations), OWL-Time export, `recorded_at` stamping, temporal provenance.
@@ -222,11 +236,10 @@ snapshot = tkg.at(datetime(2021, 6, 15))
 Explore the semantic neighborhood of any entity in your graph — useful for understanding what's conceptually close, detecting clusters, and visualizing knowledge topology.
 
 ```python
-from semantica.kg import DistanceCalculator
+from semantica.kg import SimilarityCalculator
 
-calc         = DistanceCalculator(graph)
-neighborhood = calc.semantic_neighborhood("Apple Inc.", radius=0.4)
-matrix       = calc.distance_matrix(["Apple Inc.", "Google", "Microsoft"])
+calc   = SimilarityCalculator()
+scores = calc.calculate_similarity(entity_a, entity_b)
 ```
 
 **Features:** N×N semantic distance matrices, ego-mode visualization, distance band classification (`near` / `mid` / `far`), embedding cache optimization for large graphs.
@@ -250,15 +263,13 @@ Real-world data contains the same entity under many names — "Apple", "Apple In
   </Tab>
   <Tab title="Configuration">
     ```python
-    from semantica.deduplication import EntityDeduplicator
+    from semantica.deduplication import DuplicateDetector, EntityMerger
 
-    deduplicator = EntityDeduplicator(
-        strategy="semantic_v2",
-        threshold=0.85,          # similarity threshold for merge decision
-        embedding_model="all-mpnet-base-v2",
-    )
+    detector = DuplicateDetector(similarity_threshold=0.85)
+    duplicates = detector.detect_duplicates(entities)
 
-    deduplicated_entities = deduplicator.deduplicate(entities)
+    merger = EntityMerger()
+    deduplicated_entities = merger.merge_duplicates(entities)
     ```
   </Tab>
 </Tabs>

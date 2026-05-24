@@ -99,13 +99,14 @@ influence  = context.analyze_decision_influence(decision_id)
 ```python Anthropic
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
-from semantica.llms import Anthropic
+from semantica.llms import LiteLLM
+import os
 
 context = AgentContext(
     vector_store=VectorStore(backend="faiss", dimension=1024),
     knowledge_graph=ContextGraph(advanced_analytics=True),
     decision_tracking=True,
-    llm=Anthropic(model="claude-opus-4-7"),
+    llm=LiteLLM(model="anthropic/claude-opus-4-7", api_key=os.getenv("ANTHROPIC_API_KEY")),
 )
 
 context.store("Claude excels at long-context reasoning and code generation")
@@ -124,13 +125,13 @@ precedents = context.find_precedents("document analysis model", limit=5)
 ```python Ollama (Local)
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
-from semantica.llms import Ollama
+from semantica.llms import LiteLLM
 
 context = AgentContext(
     vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=ContextGraph(advanced_analytics=True),
     decision_tracking=True,
-    llm=Ollama(model="llama3.2", base_url="http://localhost:11434"),
+    llm=LiteLLM(model="ollama/llama3.2", base_url="http://localhost:11434"),
 )
 
 # Fully local — no data leaves your infrastructure

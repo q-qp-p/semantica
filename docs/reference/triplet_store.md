@@ -155,14 +155,15 @@ icon: "table"
 Register custom prefixes to keep SPARQL queries readable:
 
 ```python
-from semantica.triplet_store import TripletStore, NamespacePrefixManager
+from semantica.triplet_store import TripletStore
+from semantica.ontology import NamespaceManager
 
-ns = NamespacePrefixManager()
+ns = NamespaceManager(base_uri="http://example.org/")
 ns.register("ex",     "http://example.org/")
 ns.register("schema", "https://schema.org/")
 ns.register("owl",    "http://www.w3.org/2002/07/owl#")
 
-store = TripletStore(backend="jena", endpoint="...", namespace_manager=ns)
+store = TripletStore(backend="jena", endpoint="...")
 
 # Registered prefixes are automatically prepended to every SPARQL query
 results = store.sparql("""

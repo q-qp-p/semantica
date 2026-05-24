@@ -296,8 +296,8 @@ def my_kg_builder(entities, relationships, **kwargs):
 
 method_registry.register("build", "high_confidence", my_kg_builder)
 
-from semantica.kg import build_knowledge_graph
-kg = build_knowledge_graph(sources, method="high_confidence")
+# Dispatch by name via the registry
+result = method_registry.execute("build", "high_confidence", entities=entities, relationships=relationships)
 ```
 
 ## ProvenanceTracker

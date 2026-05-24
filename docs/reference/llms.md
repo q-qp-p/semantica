@@ -384,16 +384,17 @@ llm = OpenAI(
 Every module that uses an LLM accepts any provider through `llm_provider=`:
 
 ```python
-from semantica.llms import Groq, Anthropic
+from semantica.llms import Groq, LiteLLM
 from semantica.semantic_extract import NERExtractor, RelationExtractor, TripletExtractor
 from semantica.ontology import LLMOntologyGenerator
-from semantica.reasoning import ReasoningEngine
+from semantica.reasoning import Reasoner
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
 import os
 
 groq_llm   = Groq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
-claude_llm = Anthropic(model="claude-opus-4-7",     api_key=os.getenv("ANTHROPIC_API_KEY"))
+# Anthropic Claude via LiteLLM using the "anthropic/" prefix
+claude_llm = LiteLLM(model="anthropic/claude-opus-4-7", api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 # Extraction — use fast Groq for high-throughput NER
 ner  = NERExtractor(method="llm",      llm_provider=groq_llm)
@@ -401,7 +402,7 @@ rel  = RelationExtractor(method="llm", llm_provider=groq_llm)
 trip = TripletExtractor(method="llm",  llm_provider=groq_llm)
 
 # Complex reasoning — use Claude for accuracy
-engine = ReasoningEngine(llm_provider=claude_llm)
+engine = Reasoner()
 
 # Ontology generation from natural language
 gen = LLMOntologyGenerator(llm_provider=claude_llm)
@@ -451,11 +452,12 @@ Load it with `ConfigManager`:
 
 ```python
 from semantica.core import ConfigManager
-from semantica.llms import create_provider
+from semantica.llms import LiteLLM
 
 config = ConfigManager("config.yaml")
-llm    = create_provider(
-    config.get("llm_provider.name"),
+# LiteLLM model strings carry the provider prefix — e.g. "anthropic/claude-opus-4-7",
+# "gemini/gemini-1.5-pro", "ollama/llama3.2" — so provider selection is config-driven
+llm = LiteLLM(
     model=config.get("llm_provider.model"),
     api_key=config.get("llm_provider.api_key"),
     temperature=config.get("llm_provider.temperature", default=0.0),
@@ -473,7 +475,7 @@ llm    = create_provider(
 </Tip>
 
 <Tip>
-  **Use `create_provider()` for config-driven pipelines.** Hard-coding `Groq(...)` in Python means changing the provider requires a code change and redeploy. `create_provider(config.get("llm_provider.name"), ...)` lets you switch from Groq to Anthropic by editing `config.yaml` — no code changes.
+  **Use `LiteLLM` for config-driven pipelines.** Hard-coding `Groq(...)` in Python means changing the provider requires a code change and redeploy. `LiteLLM(model=config.get("llm_provider.model"), ...)` lets you switch from Groq to Anthropic by editing `config.yaml` with a model string like `"anthropic/claude-opus-4-7"` — no code changes.
 </Tip>
 
 <Tip>

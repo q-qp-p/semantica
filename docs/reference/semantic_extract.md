@@ -98,11 +98,11 @@ icon: "magnifying-glass-chart"
       **v0.5.0 fix:** `NERExtractor(method="llm")` no longer silently falls back to pattern extraction on custom gateways. The `response_format=json_object` parameter is now conditionally omitted for incompatible gateways, with a plain `generate()` + JSON parsing fallback applied automatically.
     </Note>
 
-    Works with every Semantica LLM provider — swap `Groq` for `Anthropic`, `OpenAI`, `Gemini`, `Ollama`, `HuggingFace`, `DeepSeek`, or `Novita` with a one-line change:
+    Works with every Semantica LLM provider — swap `Groq` for any other provider with a one-line change. Anthropic, Gemini, Ollama, and DeepSeek are accessed via `LiteLLM` using their provider prefix:
 
     ```python
-    from semantica.llms import Anthropic
-    llm = Anthropic(model="claude-opus-4-7", api_key=os.getenv("ANTHROPIC_API_KEY"))
+    from semantica.llms import LiteLLM
+    llm = LiteLLM(model="anthropic/claude-opus-4-7", api_key=os.getenv("ANTHROPIC_API_KEY"))
     ner = NERExtractor(method="llm", llm_provider=llm)
     ```
   </Tab>
