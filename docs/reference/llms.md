@@ -1,19 +1,35 @@
 ---
 title: "LLMs Module"
-description: "Unified interface for Groq, OpenAI, Anthropic, Gemini, Ollama, DeepSeek, Novita AI, LiteLLM, and HuggingFace."
+description: "Unified interface for Groq, OpenAI, LiteLLM (Anthropic, Gemini, Ollama, DeepSeek, Azure, Bedrock, 100+ models), and HuggingFace."
 icon: "microchip"
 ---
 
-`semantica.llms` provides a single consistent API across 8+ LLM providers. Every provider is a drop-in replacement for the `llm_provider=` parameter in extractors, reasoning engines, and agents.
+`semantica.llms` provides a single consistent API across every major LLM provider. Every provider is a drop-in replacement for the `llm_provider=` parameter in extractors, reasoning engines, and agents.
+
+## Exported Classes
+
+```python
+from semantica.llms import Groq, OpenAI, LiteLLM, HuggingFaceLLM
+```
+
+| Class | Provider | API Key Required |
+| ----- | -------- | ---------------- |
+| `Groq` | Groq Cloud | `GROQ_API_KEY` |
+| `OpenAI` | OpenAI / any OpenAI-compatible gateway | `OPENAI_API_KEY` |
+| `LiteLLM` | 100+ providers via LiteLLM routing | Depends on model |
+| `HuggingFaceLLM` | Local HuggingFace Transformers | None (local) |
+
+<Tip>
+  **Anthropic, Gemini, Ollama, DeepSeek, Azure, Bedrock, Cohere, and 90+ others** are all available via `LiteLLM` using their model-string prefix. See the [LiteLLM section](#litellm-100-providers) below.
+</Tip>
 
 ## What You Get
 
-- **8+ provider integrations** — Groq, OpenAI, Anthropic, Gemini, Ollama, DeepSeek, Novita AI, LiteLLM, HuggingFace
-- **Unified `LLMProvider` interface** — swap providers with a one-line change, no application changes needed
-- **`ProviderFactory`** — instantiate any provider by name from a config dict
-- **Local models** — Ollama and HuggingFace run fully on-premise with no API key
+- **Unified `LLMProvider` interface** — swap providers with a one-line change, no application code changes
+- **`LiteLLM`** — single class for 100+ providers using model-string routing
+- **Local models** — `HuggingFaceLLM` runs fully on-premise, no API key
 - **Streaming** — token-by-token output for low-latency UX
-- **Custom gateways** — point any OpenAI-compatible endpoint via `base_url`
+- **Custom gateways** — point `OpenAI` at any OpenAI-compatible endpoint via `base_url`
 
 ## Providers
 
@@ -29,86 +45,53 @@ llm = Groq(
     max_tokens=64000,
     temperature=0.0,
 )
-# Best for: high-throughput extraction, fast inference
+# Best for: high-throughput extraction, fast inference at low cost
 ```
 
 ```python OpenAI
 from semantica.llms import OpenAI
 import os
 
-# pip install "semantica[llm-openai]"
 llm = OpenAI(
     model="gpt-4o",
     api_key=os.getenv("OPENAI_API_KEY"),
     temperature=0.0,
 )
-# Best for: general purpose, function calling
+# Best for: general purpose, function calling, JSON mode
 ```
 
-```python Anthropic
-from semantica.llms import Anthropic
-import os
-
-# pip install "semantica[llm-anthropic]"
-llm = Anthropic(
-    model="claude-opus-4-7",
-    api_key=os.getenv("ANTHROPIC_API_KEY"),
-    max_tokens=8192,
-)
-# Best for: complex reasoning, long context, safety
-```
-
-```python Gemini
-from semantica.llms import Gemini
-import os
-
-# pip install "semantica[llm-gemini]"
-llm = Gemini(
-    model="gemini-1.5-pro",
-    api_key=os.getenv("GOOGLE_API_KEY"),
-)
-# Best for: long context (1M tokens), multimodal tasks
-```
-
-```python Ollama (Local)
-from semantica.llms import Ollama
-
-# pip install "semantica[llm-ollama]"
-llm = Ollama(
-    model="llama3.2:3b",
-    base_url="http://localhost:11434",
-)
-# Best for: local inference, air-gapped environments
-# No API key required
-```
-
-```python DeepSeek
-from semantica.llms import DeepSeek
-import os
-
-llm = DeepSeek(
-    model="deepseek-chat",
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-)
-# Best for: coding tasks and analysis at very low cost
-```
-
-```python LiteLLM (100+ models)
+```python LiteLLM (100+ providers)
 from semantica.llms import LiteLLM
 import os
 
 # pip install "semantica[llm-litellm]"
-llm = LiteLLM(
-    model="gpt-4o",       # any LiteLLM-supported model string
-    api_key=os.getenv("OPENAI_API_KEY"),
-)
-# Supports: OpenAI, Anthropic, Gemini, Cohere, Azure, Bedrock, and 90+ more
+
+# Anthropic Claude
+llm = LiteLLM(model="anthropic/claude-opus-4-5",         api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+# Google Gemini
+llm = LiteLLM(model="gemini/gemini-1.5-pro",             api_key=os.getenv("GOOGLE_API_KEY"))
+
+# Ollama (local — no API key)
+llm = LiteLLM(model="ollama/llama3.2:3b",                api_base="http://localhost:11434")
+
+# DeepSeek
+llm = LiteLLM(model="deepseek/deepseek-chat",            api_key=os.getenv("DEEPSEEK_API_KEY"))
+
+# Azure OpenAI
+llm = LiteLLM(model="azure/gpt-4o",                      api_key=os.getenv("AZURE_API_KEY"))
+
+# AWS Bedrock
+llm = LiteLLM(model="bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0")
+
+# Novita AI
+llm = LiteLLM(model="novita/deepseek/deepseek-v3.2",     api_key=os.getenv("NOVITA_API_KEY"))
 ```
 
-```python HuggingFace (BYOM)
-from semantica.llms import HuggingFace
+```python HuggingFaceLLM (Local)
+from semantica.llms import HuggingFaceLLM
 
-llm = HuggingFace(
+llm = HuggingFaceLLM(
     model="mistralai/Mistral-7B-Instruct-v0.3",
     device="cuda",           # "cpu" | "cuda" | "mps"
     max_new_tokens=512,
@@ -119,22 +102,33 @@ llm = HuggingFace(
 
 </CodeGroup>
 
-## Provider Factory
+## LiteLLM — 100+ Providers
 
-Instantiate any provider by name string — useful when provider is loaded from config:
+`LiteLLM` is the recommended way to access any provider not directly exported by `semantica.llms`. Use the `provider/model` string format:
 
 ```python
-from semantica.llms import create_provider
+from semantica.llms import LiteLLM
+import os
 
-llm = create_provider("groq",      model="llama-3.3-70b-versatile")
-llm = create_provider("openai",    model="gpt-4o")
-llm = create_provider("anthropic", model="claude-opus-4-7")
-llm = create_provider("gemini",    model="gemini-1.5-pro")
-llm = create_provider("ollama",    model="llama3.2")
-llm = create_provider("deepseek",  model="deepseek-chat",   api_key=os.getenv("DEEPSEEK_API_KEY"))
-llm = create_provider("novita",    model="deepseek/deepseek-v3.2", api_key=os.getenv("NOVITA_API_KEY"))
-llm = create_provider("litellm",   model="gpt-4o")
+# Pattern: LiteLLM(model="<provider>/<model-name>")
+providers = {
+    "Anthropic":  LiteLLM(model="anthropic/claude-opus-4-5",       api_key=os.getenv("ANTHROPIC_API_KEY")),
+    "Gemini":     LiteLLM(model="gemini/gemini-1.5-pro",            api_key=os.getenv("GOOGLE_API_KEY")),
+    "Ollama":     LiteLLM(model="ollama/llama3.2:3b",               api_base="http://localhost:11434"),
+    "DeepSeek":   LiteLLM(model="deepseek/deepseek-chat",           api_key=os.getenv("DEEPSEEK_API_KEY")),
+    "Azure":      LiteLLM(model="azure/gpt-4o",                     api_key=os.getenv("AZURE_API_KEY")),
+    "Bedrock":    LiteLLM(model="bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0"),
+    "Cohere":     LiteLLM(model="cohere/command-r-plus",            api_key=os.getenv("COHERE_API_KEY")),
+    "Novita AI":  LiteLLM(model="novita/deepseek/deepseek-v3.2",    api_key=os.getenv("NOVITA_API_KEY")),
+}
+
+# Every LiteLLM instance implements the same .generate() interface
+response = providers["Anthropic"].generate("Explain GraphRAG in one paragraph.")
 ```
+
+<Note>
+  The full list of supported LiteLLM model strings is at [docs.litellm.ai/docs/providers](https://docs.litellm.ai/docs/providers). Use the `provider/model` format shown above.
+</Note>
 
 ## Custom / Enterprise Gateways
 
@@ -170,17 +164,17 @@ trip = TripletExtractor(method="llm",  llm_provider=llm)
 
 ## Provider Comparison
 
-| Provider | Speed | Cost | Local | Context | Best For |
-| -------- | ----- | ---- | ----- | ------- | -------- |
-| Groq | Very fast | Low | No | 128k | High-throughput extraction |
-| OpenAI | Fast | Medium | No | 128k | General purpose, function calling |
-| Anthropic | Fast | Medium | No | 200k | Complex reasoning, safety |
-| Gemini | Fast | Low | No | 1M | Long context, multimodal |
-| Ollama | Medium | Free | Yes | Varies | Privacy, no API key |
-| DeepSeek | Fast | Very low | No | 64k | Coding, analysis |
-| Novita AI | Fast | Low | No | Varies | DeepSeek-based tasks |
-| LiteLLM | Varies | Varies | Varies | Varies | Multi-provider routing |
-| HuggingFace | Slow | Free | Yes | Varies | Custom models, BYOM |
+| Provider | Import | Speed | Cost | Local | Context | Best For |
+| -------- | ------ | ----- | ---- | ----- | ------- | -------- |
+| Groq | `Groq` | Very fast | Low | No | 128k | High-throughput extraction |
+| OpenAI | `OpenAI` | Fast | Medium | No | 128k | General purpose, function calling |
+| Anthropic | `LiteLLM(model="anthropic/...")` | Fast | Medium | No | 200k | Complex reasoning, safety |
+| Gemini | `LiteLLM(model="gemini/...")` | Fast | Low | No | 1M | Long context, multimodal |
+| Ollama | `LiteLLM(model="ollama/...")` | Medium | Free | Yes | Varies | Privacy, air-gapped |
+| DeepSeek | `LiteLLM(model="deepseek/...")` | Fast | Very low | No | 64k | Coding, analysis |
+| Azure OpenAI | `LiteLLM(model="azure/...")` | Fast | Medium | No | 128k | Enterprise, compliance |
+| AWS Bedrock | `LiteLLM(model="bedrock/...")` | Fast | Varies | No | Varies | AWS-native workloads |
+| HuggingFace | `HuggingFaceLLM` | Slow | Free | Yes | Varies | Custom models, BYOM |
 
 <Tip>
   For production extraction pipelines, Groq delivers the best throughput-to-cost ratio. For complex multi-hop reasoning, Claude Opus or GPT-4o provide the highest accuracy.

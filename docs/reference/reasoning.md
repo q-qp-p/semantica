@@ -6,6 +6,35 @@ icon: "microchip"
 
 `semantica.reasoning` derives new knowledge from existing facts using logical rules. Every engine produces **explainable inference paths** — traceable chains of rules and facts, not black-box conclusions.
 
+## Exported Classes
+
+```python
+from semantica.reasoning import (
+    # Engines
+    Reasoner,                 # IF/THEN forward-chaining facade
+    GraphReasoner,            # inference over full KG structure
+    ReteEngine,               # high-performance Rete pattern matching
+    SPARQLReasoner,           # SPARQL-based RDF inference
+    DatalogReasoner,          # recursive Horn clause fixpoint evaluation
+    TemporalReasoningEngine,  # Allen interval algebra (13 relations)
+    ExplanationGenerator,     # structured step-by-step explanations
+    # Data types
+    Rule,                     # IF/THEN rule definition
+    Fact,                     # base fact (subject, predicate, obj)
+    RuleType,                 # enum: FORWARD_CHAIN, BACKWARD_CHAIN, ...
+    InferenceResult,          # result of infer() — contains derived_facts list
+    DatalogFact,              # Datalog base fact (predicate, args tuple)
+    DatalogRule,              # Datalog Horn clause ("head :- body.")
+    TemporalInterval,         # time interval with start/end
+    IntervalRelation,         # enum of 13 Allen relations
+    # Explanation types
+    Explanation,              # conclusion + confidence + reasoning_path
+    ReasoningPath,            # ordered list of ReasoningSteps
+    ReasoningStep,            # single step: fact + rule_name + depth
+    Justification,            # full justification record
+)
+```
+
 ## What You Get
 
 - **`Reasoner`** — main facade for IF/THEN forward-chaining with variable substitution
@@ -15,6 +44,28 @@ icon: "microchip"
 - **`DatalogReasoner`** — recursive Horn clause rules with guaranteed fixpoint termination (v0.4.0)
 - **`TemporalReasoningEngine`** — all 13 Allen interval algebra relations for time-aware inference
 - **`ExplanationGenerator`** — structured explanation paths for every derived conclusion
+
+## Quick Start
+
+The most common pattern: add facts + rules, run inference, explain a conclusion:
+
+```python
+from semantica.reasoning import Reasoner, Rule, Fact, RuleType, InferenceResult
+
+reasoner = Reasoner()
+
+reasoner.add_fact(Fact(subject="Alice", predicate="is_a", obj="Manager"))
+reasoner.add_rule(Rule(
+    rule_type=RuleType.FORWARD_CHAIN,
+    conditions=[{"subject": "?x", "predicate": "is_a", "object": "Manager"}],
+    conclusion={"subject": "?x", "predicate": "has_authority", "object": "true"},
+))
+
+result: InferenceResult = reasoner.infer()
+for fact in result.derived_facts:
+    print(f"{fact.subject} {fact.predicate} {fact.obj}")
+    print(f"  via: {fact.explanation}")
+```
 
 <img src="/assets/img/diagrams/reasoning-chain.svg" alt="Forward chaining inference: known facts + IF/THEN rules produce derived facts with a full traceable explanation path" style={{ width: '100%', borderRadius: '12px', margin: '0 0 24px' }} />
 
@@ -202,21 +253,37 @@ All 13 Allen interval algebra relations are supported:
 Generate structured step-by-step explanations for any derived conclusion:
 
 ```python
-from semantica.reasoning import ExplanationGenerator
+from semantica.reasoning import ExplanationGenerator, Explanation, ReasoningStep
 
 generator = ExplanationGenerator(reasoner)
 
-explanation = generator.explain(
+explanation: Explanation = generator.explain(
     conclusion={"subject": "John", "predicate": "has_authority", "object": "true"}
 )
 
-print(explanation.conclusion)
+print(f"Conclusion: {explanation.conclusion}")
 print(f"Confidence: {explanation.confidence:.2f}")
 
+step: ReasoningStep
 for step in explanation.reasoning_path.steps:
     print(f"  Step {step.depth}: {step.fact}")
     print(f"    via rule: '{step.rule_name}'")
 ```
+
+## Choosing an Engine
+
+| Engine | Best For | Termination | Complexity |
+| ------ | -------- | ----------- | ---------- |
+| `Reasoner` | Simple IF/THEN rules, templates | Always | Low |
+| `GraphReasoner` | KG-wide structural inference | Always | Medium |
+| `ReteEngine` | Large rule sets (100+ rules) | Always | Low per-match |
+| `SPARQLReasoner` | RDF graphs with SPARQL endpoint | Always | Low |
+| `DatalogReasoner` | Recursive rules (ancestry, reachability) | Guaranteed fixpoint | Medium |
+| `TemporalReasoningEngine` | Time interval relationships | Always | Low |
+
+<Tip>
+  For recursive rules (e.g. ancestor, reachability, transitivity), always use `DatalogReasoner` — it guarantees termination via semi-naive bottom-up fixpoint evaluation. `Reasoner` does not handle recursion.
+</Tip>
 
 <CardGroup cols={2}>
   <Card title="Knowledge Graph" icon="diagram-project" href="kg">

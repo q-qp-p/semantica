@@ -1,37 +1,42 @@
 ---
 title: "Evals Module"
-description: "Evaluation framework for measuring Knowledge Graph quality, extraction accuracy, and pipeline performance."
+description: "Evaluation framework for measuring Knowledge Graph quality, extraction accuracy, and pipeline performance — coming soon."
 icon: "chart-line"
 ---
 
-`semantica.evals` provides a comprehensive evaluation framework for measuring extraction accuracy, graph quality, and pipeline performance. Use it to benchmark extractors, validate pipeline output, and track quality regressions across runs.
+`semantica.evals` is planned as a comprehensive evaluation framework for measuring extraction accuracy, graph quality, and pipeline performance.
 
 <Warning>
-  **Coming Soon** — This module is currently in active development. Documentation will be expanded in the next release.
+  **`semantica.evals` is not yet implemented.** The module exists as a placeholder (`__all__ = []`). No classes or functions are available for import. This page describes the planned API.
 </Warning>
 
-## Planned Capabilities
+## Planned Features
 
-The Evals module will cover five evaluation areas:
+When released, `semantica.evals` will provide:
 
-| Area | What It Measures |
-| ---- | ---------------- |
-| **KG Quality** | Completeness, consistency, schema compliance, coverage metrics |
-| **Extraction Accuracy** | NER precision / recall / F1, relation extraction metrics |
-| **Pipeline Performance** | Throughput (docs/sec), latency per step, error rates |
-| **Deduplication** | Merge accuracy, false positive / negative rates |
-| **Reasoning** | Inference correctness, rule coverage, derivation depth |
+- **KG quality metrics** — completeness, consistency, schema compliance, coverage, and orphan node detection
+- **Extraction accuracy** — NER precision / recall / F1 and relation extraction metrics against gold-standard datasets
+- **Pipeline benchmarking** — throughput (docs/sec), per-step latency, peak memory, and error rate
+- **Regression tracking** — record runs and compare metrics across commits or config changes
+- **Deduplication accuracy** — merge precision, false positive / false negative rates
+- **Reasoning correctness** — inference accuracy, rule coverage, and derivation depth
 
-## Scope
+## Current Workaround
 
-- **Offline evaluation** — compare against gold-standard annotated datasets
-- **Regression tracking** — compare pipeline runs across commits or config changes
-- **Live monitoring** — record quality metrics during production pipeline runs
-- **Benchmark suites** — standard NER, RE, and KG construction benchmarks
+Until `semantica.evals` ships, use `semantica.ontology.OntologyEvaluator` for ontology quality metrics:
+
+```python
+from semantica.ontology import OntologyEvaluator
+
+evaluator = OntologyEvaluator()
+report    = evaluator.evaluate(ontology, kg)
+print(f"Coverage:     {report.coverage:.2%}")
+print(f"Completeness: {report.completeness:.2%}")
+```
 
 <CardGroup cols={2}>
   <Card title="Semantic Extract" icon="magnifying-glass" href="semantic_extract">
-    Extraction module to evaluate.
+    Extraction module.
   </Card>
   <Card title="Knowledge Graph" icon="diagram-project" href="kg">
     Graph quality assessment.
@@ -39,7 +44,7 @@ The Evals module will cover five evaluation areas:
   <Card title="Pipeline" icon="gear" href="pipeline">
     Pipeline performance metrics.
   </Card>
-  <Card title="Deduplication" icon="copy" href="deduplication">
-    Deduplication accuracy evaluation.
+  <Card title="Ontology Evaluator" icon="sitemap" href="ontology">
+    Available now for ontology quality metrics.
   </Card>
 </CardGroup>

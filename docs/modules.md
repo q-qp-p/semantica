@@ -134,21 +134,20 @@ triplets = trip.extract(text)
 Graph construction, graph algorithms, temporal model, and distance intelligence.
 
 ```python
-from semantica.kg import GraphBuilder, GraphAnalyzer, TemporalKnowledgeGraph, DistanceCalculator
+from semantica.kg import GraphBuilder, GraphAnalyzer, TemporalGraphQuery, SimilarityCalculator
+from datetime import datetime
 
 # Build
 builder = GraphBuilder(merge_entities=True)
 kg = builder.build(entities=entities, relationships=relationships)
 
 # Temporal graphs (v0.4.0)
-tkg = TemporalKnowledgeGraph()
-tkg.add_node("ceo_role", valid_from=datetime(2020, 1, 1), valid_until=datetime(2023, 6, 1))
-snapshot = tkg.at(datetime(2021, 6, 15))
+query_engine = TemporalGraphQuery(enable_temporal_reasoning=True)
+snapshot = query_engine.query_at_time(kg, query="", at_time=datetime(2021, 6, 15))
 
-# Distance Intelligence (v0.5.0)
-calc = DistanceCalculator(kg)
-neighborhood = calc.semantic_neighborhood("Apple Inc.", radius=0.4)
-matrix        = calc.distance_matrix(["Apple Inc.", "Google", "Microsoft"])
+# Semantic similarity (v0.5.0)
+calc = SimilarityCalculator()
+scores = calc.calculate_similarity(entity_a, entity_b)
 ```
 
 **Graph algorithms available:** centrality calculation, community detection, connectivity analysis, entity resolution, link prediction, path finding, similarity calculation
@@ -158,29 +157,29 @@ matrix        = calc.distance_matrix(["Apple Inc.", "Google", "Microsoft"])
 Schema management including SHACL, SKOS, alignments, diff/migration, auto-generation, and the visual Ontology Hub (v0.5.0).
 
 ```python
-from semantica.ontology import OntologyManager, SHACLGenerator
+from semantica.ontology import OntologyGenerator, SHACLGenerator
 
-ontology = OntologyManager()
-ontology.add_class("Person", ["name", "birth_date"])
-ontology.add_relationship("works_for", "Person", "Organization")
-is_valid = ontology.validate_graph(kg)
+generator = OntologyGenerator()
+ontology  = generator.generate_from_graph(kg)
 
 shacl  = SHACLGenerator()
 shapes = shacl.generate(ontology)
 ```
 
-**Components:** `OntologyManager`, `SHACLGenerator`, `OntologyGenerator`, `OntologyValidator`, `OntologyEvaluator`, `LLMGenerator`, `OWLGenerator`, `PropertyGenerator`, `DomainOntologies`, `NamespaceManager`
+**Components:** `OntologyGenerator`, `SHACLGenerator`, `OntologyValidator`, `OntologyEvaluator`, `LLMOntologyGenerator`, `OWLGenerator`, `PropertyGenerator`, `DomainOntologies`, `NamespaceManager`
 
 ### Reasoning
 
 Derives new facts from existing knowledge using multiple inference strategies.
 
 ```python
-from semantica.reasoning import ReasoningEngine, DatalogEngine
+from semantica.reasoning import Reasoner, DatalogReasoner
 
 # Rule-based reasoning
-engine     = ReasoningEngine()
-inferences = engine.infer(kg, rules=["transitivity", "symmetry"])
+engine = Reasoner()
+engine.apply_transitivity("located_in")
+engine.apply_symmetry("knows")
+result = engine.infer()
 
 # Datalog — recursive Horn clause rules (v0.4.0)
 datalog = DatalogEngine()
@@ -403,9 +402,8 @@ result = pipeline.run("data/")
 FastAPI Knowledge Explorer with Ontology Hub, WebSocket progress, bidirectional path finding, and indexed search (0.004ms on 118k nodes).
 
 ```python
-from semantica.explorer import start_explorer
-
-start_explorer(graph=kg, port=8080)
+# Launch via CLI
+# semantica explore --port 8080
 # Opens at http://localhost:8080
 ```
 
@@ -418,11 +416,13 @@ start_explorer(graph=kg, port=8080)
 Unified interface to all supported LLM providers.
 
 ```python
-from semantica.llms import Groq, OpenAI, create_provider
+from semantica.llms import Groq, OpenAI, LiteLLM
+import os
 
-llm     = Groq(model="llama-3.3-70b-versatile")
-llm     = OpenAI(model="gpt-4o")
-llm     = create_provider("anthropic", model="claude-opus-4-7")
+llm = Groq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
+llm = OpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
+# Anthropic, Gemini, Ollama, DeepSeek via LiteLLM:
+llm = LiteLLM(model="anthropic/claude-opus-4-7", api_key=os.getenv("ANTHROPIC_API_KEY"))
 ```
 
 **Supported providers:** OpenAI, Anthropic, Google Gemini, Groq, Ollama, DeepSeek, Novita AI, LiteLLM (20+ models via one interface)
@@ -439,41 +439,69 @@ python -m semantica.mcp_server
 
 ### Seed
 
-Deterministic data seeding for testing and development.
+Bootstrap knowledge graphs from verified structured sources — fixed-point reference data, controlled vocabularies, and domain anchors.
 
 ```python
 from semantica.seed import SeedManager
 
 seed = SeedManager()
 seed.populate(kg, dataset="companies", count=100)
+
+# Load domain seeds from file or built-in datasets
+seed.load_from_file("seed_data/industries.json")
+seed.inject(kg)   # merges seed nodes without duplicating existing entities
 ```
+
+**Use cases:** anchoring extraction with known entities, pre-populating ontology classes, deterministic test graph generation.
 
 ### Evals
 
-Evaluation harness for extraction and reasoning quality.
+Evaluation framework for measuring KG quality, extraction accuracy, and pipeline performance.
 
 ```python
-from semantica.evals import Evaluator
+from semantica.evals import KGEvaluator, ExtractionEvaluator, PipelineEvaluator, RegressionTracker
 
-evaluator = Evaluator()
-scores    = evaluator.evaluate(predicted_entities, ground_truth)
-# Returns: {"precision": 0.91, "recall": 0.87, "f1": 0.89}
+# KG quality
+report = KGEvaluator().evaluate(kg, ontology=ontology)
+print(f"Completeness: {report.completeness:.2%}  Consistency: {report.consistency:.2%}")
+
+# Extraction accuracy
+report = ExtractionEvaluator().evaluate_ner(predictions=extracted, gold_standard=annotated)
+print(f"Precision: {report.precision:.3f}  Recall: {report.recall:.3f}  F1: {report.f1:.3f}")
+
+# Pipeline throughput and latency
+metrics = PipelineEvaluator().benchmark(pipeline, data="data/", bench_runs=5)
+print(f"Throughput: {metrics.docs_per_second:.1f} docs/sec")
+
+# Regression tracking across runs
+tracker = RegressionTracker(db_path="eval_history.db")
+run_id  = tracker.record_run(pipeline_version="v1.2.0", metrics=metrics)
+diff    = tracker.compare(run_id, baseline_run_id="run_abc123")
 ```
 
-**Metrics:** precision, recall, F1 for NER, relation extraction, and reasoning
+**Components:** `KGEvaluator`, `ExtractionEvaluator`, `PipelineEvaluator`, `RegressionTracker`
 
 ### Core
 
 Base classes, shared data models, and the plugin registry used across all modules.
 
 ```python
-from semantica.core import Orchestrator, PluginRegistry
+from semantica.core import Semantica, PluginRegistry, ConfigManager
 
+# Top-level orchestrator
+sem = Semantica(config_path="config.yaml")
+sem.initialize()
+
+# Plugin registry — register custom components
 registry = PluginRegistry()
 registry.register("my_ingestor", MyCustomIngestor)
+
+# Config management
+config  = ConfigManager(config_path="config.yaml")
+batch   = config.get("processing.batch_size", default=32)
 ```
 
-**Components:** `Orchestrator`, `PluginRegistry`, `ConfigManager`, `Lifecycle`
+**Components:** `Semantica`, `PluginRegistry`, `ConfigManager`, `LifecycleManager`, `HealthMonitor`, `Config`
 
 ### Utils
 
@@ -504,16 +532,16 @@ from semantica.utils import helpers, validators, logging
 | [ingest](reference/ingest) | Data ingestion | `FileIngestor`, `WebIngestor`, `ParquetIngestor`, `XMLIngestor` |
 | [parse](reference/parse) | Document parsing | `DocumentParser`, `DoclingParser` |
 | [split](reference/split) | Text chunking | `TextSplitter` |
-| [normalize](reference/normalize) | Data cleaning | `DataNormalizer` |
-| [semantic_extract](reference/semantic_extract) | NER & relation extraction | `NERExtractor`, `RelationExtractor`, `TripletExtractor` |
-| [kg](reference/kg) | Graph construction | `GraphBuilder`, `TemporalKnowledgeGraph`, `DistanceCalculator` |
-| [ontology](reference/ontology) | Schema management | `OntologyManager`, `SHACLGenerator` |
-| [reasoning](reference/reasoning) | Logical inference | `ReasoningEngine`, `DatalogEngine` |
+| [normalize](reference/normalize) | Data cleaning | `TextNormalizer`, `EntityNormalizer`, `LanguageDetector` |
+| [semantic_extract](reference/semantic_extract) | NER & relation extraction | `NERExtractor`, `RelationExtractor`, `TripletExtractor`, `SemanticAnalyzer`, `SemanticNetworkExtractor`, `ExtractionValidator` |
+| [kg](reference/kg) | Graph construction | `GraphBuilder`, `TemporalGraphQuery`, `SimilarityCalculator` |
+| [ontology](reference/ontology) | Schema management | `OntologyGenerator`, `SHACLGenerator` |
+| [reasoning](reference/reasoning) | Logical inference | `Reasoner`, `DatalogReasoner` |
 | [embeddings](reference/embeddings) | Vector embeddings | `EmbeddingGenerator` |
 | [vector_store](reference/vector_store) | Vector database | `VectorStore` |
 | [graph_store](reference/graph_store) | Graph database | `GraphStore` |
 | [triplet_store](reference/triplet_store) | RDF triple store | `TripletStore` |
-| [deduplication](reference/deduplication) | Entity resolution | `EntityResolver`, `DuplicateDetector` |
+| [deduplication](reference/deduplication) | Entity resolution | `EntityResolver`, `DuplicateDetector`, `ClusterBuilder`, `MergeStrategyManager` |
 | [conflicts](reference/conflicts) | Conflict resolution | `ConflictDetector` |
 | [context](reference/context) | Agent context & decisions | `AgentContext`, `ContextGraph` |
 | [provenance](reference/provenance) | W3C PROV-O lineage | `ProvenanceManager` |
@@ -524,9 +552,9 @@ from semantica.utils import helpers, validators, logging
 | [explorer](reference/explorer) | Knowledge Explorer UI | `start_explorer` |
 | [llms](reference/llms) | LLM providers | `Groq`, `OpenAI`, `create_provider` |
 | [mcp_server](reference/mcp_server) | MCP stdio server | `python -m semantica.mcp_server` |
-| [seed](reference/seed) | Test data seeding | `SeedManager` |
-| [evals](reference/evals) | Quality evaluation | `Evaluator` |
-| [core](reference/core) | Base classes & registry | `Orchestrator`, `PluginRegistry` |
+| [seed](reference/seed) | KG bootstrapping from structured sources | `SeedManager` |
+| [evals](reference/evals) | Quality evaluation | `KGEvaluator`, `ExtractionEvaluator`, `PipelineEvaluator`, `RegressionTracker` |
+| [core](reference/core) | Base classes & registry | `Semantica`, `ConfigManager`, `PluginRegistry`, `LifecycleManager` |
 | [utils](reference/utils) | Shared utilities | `helpers`, `validators` |
 
 <CardGroup cols={2}>

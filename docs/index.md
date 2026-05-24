@@ -13,11 +13,23 @@ description: "The Accountability and Context Layer for AI — Context Graphs · 
 
 AI agents today are powerful but not trustworthy. Five structural gaps make them impossible to deploy in regulated environments:
 
-- **No memory structure.** Agents store embeddings, not meaning. There's no way to ask *why* something was recalled or trace a fact to its source.
-- **No decision trail.** Agents act continuously but record nothing. When something breaks, there's no history to debug or audit.
-- **No provenance.** Outputs can't be traced back to source facts. In healthcare, finance, and legal, this is a hard compliance blocker.
-- **No reasoning transparency.** Black-box answers with zero explanation of how a conclusion was reached.
-- **No conflict detection.** Contradictory facts silently coexist in vector stores, producing unpredictable and inconsistent outputs.
+<CardGroup cols={2}>
+  <Card title="No memory structure" icon="brain">
+    Agents store embeddings, not meaning. There's no way to ask *why* something was recalled or trace a fact to its source.
+  </Card>
+  <Card title="No decision trail" icon="clock-rotate-left">
+    Agents act continuously but record nothing. When something breaks, there's no history to debug or audit.
+  </Card>
+  <Card title="No provenance" icon="link-slash">
+    Outputs can't be traced back to source facts. In healthcare, finance, and legal, this is a hard compliance blocker.
+  </Card>
+  <Card title="No reasoning transparency" icon="eye-slash">
+    Black-box answers with zero explanation of how a conclusion was reached.
+  </Card>
+  <Card title="No conflict detection" icon="triangle-exclamation">
+    Contradictory facts silently coexist in vector stores, producing unpredictable and inconsistent outputs.
+  </Card>
+</CardGroup>
 
 These aren't edge cases. They're why AI cannot be deployed in healthcare, finance, legal, and government without custom guardrails built from scratch.
 
@@ -25,12 +37,26 @@ These aren't edge cases. They're why AI cannot be deployed in healthcare, financ
 
 Semantica is the **accountability and context layer** you add on top of your existing AI stack. Not a replacement for LangChain or LlamaIndex — the infrastructure that makes their outputs trustworthy.
 
-- **Context Graphs** — a structured, queryable graph of everything your agent knows, decides, and reasons about. Persistent across runs.
-- **Decision Intelligence** — every decision is a first-class object: recorded, causally linked, searchable by precedent, and analyzable for downstream impact.
-- **Full Provenance** — every fact links back to its source. W3C PROV-O compliant. Full lineage from ingestion to inference.
-- **Reasoning Engines** — forward chaining, Rete, deductive, abductive, SPARQL, Datalog. Explainable paths, not black boxes.
-- **Temporal Intelligence** — point-in-time queries, Allen interval algebra, temporal provenance, OWL-Time export.
-- **Ontology Hub** — visual editor, SHACL Studio, alignment authoring, health dashboard. Full ontology lifecycle in the browser.
+<CardGroup cols={2}>
+  <Card title="Context Graphs" icon="diagram-project">
+    A structured, queryable graph of everything your agent knows, decides, and reasons about. Persistent across runs.
+  </Card>
+  <Card title="Decision Intelligence" icon="check-circle">
+    Every decision is a first-class object: recorded, causally linked, searchable by precedent, and analyzable for downstream impact.
+  </Card>
+  <Card title="Full Provenance" icon="shield-check">
+    Every fact links back to its source. W3C PROV-O compliant. Full lineage from ingestion to inference.
+  </Card>
+  <Card title="Reasoning Engines" icon="microchip">
+    Forward chaining, Rete, deductive, abductive, SPARQL, Datalog. Explainable paths, not black boxes.
+  </Card>
+  <Card title="Temporal Intelligence" icon="clock">
+    Point-in-time queries, Allen interval algebra, temporal provenance, OWL-Time export.
+  </Card>
+  <Card title="Ontology Hub" icon="sitemap">
+    Visual editor, SHACL Studio, alignment authoring, health dashboard. Full ontology lifecycle in the browser.
+  </Card>
+</CardGroup>
 
 Works alongside any LLM provider and any agent framework.
 
@@ -47,13 +73,13 @@ pip install semantica
 ```python OpenAI
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
-from semantica.llms import OpenAIProvider
+from semantica.llms import OpenAI
 
 context = AgentContext(
     vector_store=VectorStore(backend="faiss", dimension=1536),
     knowledge_graph=ContextGraph(advanced_analytics=True),
     decision_tracking=True,
-    llm=OpenAIProvider(model="gpt-4o"),
+    llm=OpenAI(model="gpt-4o"),
 )
 
 context.store("GPT-4 outperforms GPT-3.5 on reasoning benchmarks by 40%")
@@ -73,13 +99,14 @@ influence  = context.analyze_decision_influence(decision_id)
 ```python Anthropic
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
-from semantica.llms import AnthropicProvider
+from semantica.llms import LiteLLM
+import os
 
 context = AgentContext(
     vector_store=VectorStore(backend="faiss", dimension=1024),
     knowledge_graph=ContextGraph(advanced_analytics=True),
     decision_tracking=True,
-    llm=AnthropicProvider(model="claude-opus-4-7"),
+    llm=LiteLLM(model="anthropic/claude-opus-4-7", api_key=os.getenv("ANTHROPIC_API_KEY")),
 )
 
 context.store("Claude excels at long-context reasoning and code generation")
@@ -98,13 +125,13 @@ precedents = context.find_precedents("document analysis model", limit=5)
 ```python Ollama (Local)
 from semantica.context import AgentContext, ContextGraph
 from semantica.vector_store import VectorStore
-from semantica.llms import OllamaProvider
+from semantica.llms import LiteLLM
 
 context = AgentContext(
     vector_store=VectorStore(backend="faiss", dimension=768),
     knowledge_graph=ContextGraph(advanced_analytics=True),
     decision_tracking=True,
-    llm=OllamaProvider(model="llama3.2", base_url="http://localhost:11434"),
+    llm=LiteLLM(model="ollama/llama3.2", base_url="http://localhost:11434"),
 )
 
 # Fully local — no data leaves your infrastructure
@@ -173,7 +200,23 @@ pip install semantica==0.5.0
 
 ## Start Here
 
-If you're new to Semantica, install first and then open [Quickstart](quickstart). Use [Core Concepts](concepts) for the mental model, or jump to [API Reference](reference/context) when you need exact details.
+<Steps>
+  <Step title="Install">
+    ```bash
+    pip install semantica
+    ```
+    See [Installation](installation) for optional extras and environment setup.
+  </Step>
+  <Step title="Follow the Quickstart">
+    Build a complete knowledge graph pipeline — ingest, extract, build, query — in [5 minutes](quickstart).
+  </Step>
+  <Step title="Learn the mental model">
+    [Core Concepts](concepts) explains knowledge graphs, GraphRAG, provenance, and decision intelligence. Read this before the API reference.
+  </Step>
+  <Step title="Go deep on any module">
+    Every module has a dedicated [reference page](reference/context) with class docs, parameter tables, and runnable examples.
+  </Step>
+</Steps>
 
 <CardGroup cols={2}>
   <Card title="Installation" icon="download" href="installation">
@@ -255,45 +298,60 @@ If you're new to Semantica, install first and then open [Quickstart](quickstart)
 | `semantica.mcp_server` | MCP stdio server — 12 tools for Claude Desktop, VS Code, Cursor, Windsurf, Cline |
 | `semantica.vector_store` | FAISS, Pinecone, Weaviate, Qdrant, Milvus, PgVector |
 | `semantica.graph_store` | Neo4j, FalkorDB, Apache AGE, Amazon Neptune |
-| `semantica.triplet_store` | In-memory and persistent RDF triple store |
+| `semantica.triplet_store` | In-memory and persistent RDF triple store with SPARQL |
 | `semantica.ingest` | Files, web, feeds, databases, Snowflake, Parquet, XML, MCP |
 | `semantica.parse` | Document parsing — PDF, DOCX, HTML, PPTX, Docling layout analysis |
 | `semantica.split` | Text chunking — sentence, paragraph, token, semantic boundary strategies |
 | `semantica.normalize` | Text normalization, entity canonicalization, whitespace and encoding cleanup |
-| `semantica.embeddings` | Sentence-Transformers, FastEmbed, OpenAI, BGE |
+| `semantica.embeddings` | Sentence-Transformers, FastEmbed, OpenAI, BGE, Ollama local embeddings |
 | `semantica.pipeline` | Pipeline DSL, parallel workers, retry policies, failure handling |
-| `semantica.export` | RDF, Parquet, ArangoDB AQL, CSV, OWL, graph formats |
-| `semantica.visualization` | Programmatic graph rendering — force, hierarchical, circular layouts |
+| `semantica.export` | RDF, Parquet, ArangoDB AQL, CSV, OWL, Arrow, GraphML, GEXF, DOT |
+| `semantica.visualization` | Programmatic graph rendering — force, hierarchical, circular, spring layouts |
 | `semantica.deduplication` | Entity deduplication v1/v2, similarity scoring, blocking, merging |
 | `semantica.conflicts` | Conflict detection and resolution across overlapping knowledge sources |
 | `semantica.provenance` | W3C PROV-O lineage tracking, source attribution, audit trails |
 | `semantica.change_management` | Version control with SHA-256 checksums, diff, rollback |
-| `semantica.llms` | Groq, OpenAI, Anthropic, Gemini, Ollama, DeepSeek, Novita AI, LiteLLM |
-| `semantica.seed` | Deterministic data seeding and synthetic graph generation for tests |
-| `semantica.evals` | Evaluation harness — precision, recall, F1 for extraction and reasoning |
-| `semantica.core` | Core data models, base classes, shared type definitions |
-| `semantica.utils` | Shared utilities — ID generation, date parsing, schema helpers |
+| `semantica.llms` | Groq, OpenAI, Anthropic, Gemini, Ollama, DeepSeek, Novita AI, LiteLLM, HuggingFace |
+| `semantica.seed` | Foundation graph seeding from CSV, JSON, SQL, API, and RDF sources |
+| `semantica.evals` | Evaluation harness — KG quality, extraction F1, pipeline benchmarking, regression tracking |
+| `semantica.core` | Orchestration, ConfigManager, LifecycleManager, PluginRegistry, MethodRegistry |
+| `semantica.utils` | Logging, validation, progress tracking, hash utilities, nested dict helpers |
 
 ## Built for High-Stakes Domains
 
 Where every decision must be accountable and mistakes have real consequences:
 
-**Healthcare & Life Sciences** — clinical decision support, drug interaction graphs, patient safety audit trails, HIPAA compliance.
-
-**Finance & Risk** — fraud detection graphs, SOX/GDPR/MiFID II compliance, risk assessment trails.
-
-**Legal & Compliance** — evidence-backed research, contract analysis, regulatory change tracking.
-
-**Cybersecurity** — threat attribution graphs, incident response timelines, security audit trails.
-
-**Government & Defense** — policy decision trails, classified information handling, provenance chains.
-
-**Critical Infrastructure** — power grids, transportation safety, emergency response coordination.
+<CardGroup cols={2}>
+  <Card title="Healthcare & Life Sciences" icon="heart-pulse">
+    Clinical decision support, drug interaction graphs, patient safety audit trails, HIPAA compliance.
+  </Card>
+  <Card title="Finance & Risk" icon="chart-line">
+    Fraud detection graphs, SOX/GDPR/MiFID II compliance, risk assessment trails.
+  </Card>
+  <Card title="Legal & Compliance" icon="scale-balanced">
+    Evidence-backed research, contract analysis, regulatory change tracking.
+  </Card>
+  <Card title="Cybersecurity" icon="shield">
+    Threat attribution graphs, incident response timelines, security audit trails.
+  </Card>
+  <Card title="Government & Defense" icon="building-columns">
+    Policy decision trails, classified information handling, provenance chains.
+  </Card>
+  <Card title="Critical Infrastructure" icon="bolt">
+    Power grids, transportation safety, emergency response coordination.
+  </Card>
+</CardGroup>
 
 ## Why Semantica?
 
-**Open source, MIT licensed.** No vendor lock-in, no paywalled features. Every line of code is available and forkable.
-
-**Production ready.** 1,000+ passing tests, `PipelineValidator`, `FailureHandler` with exponential backoff, conflict resolution, and 12 security fixes in v0.5.0.
-
-**Modular by design.** Import only what you need. Use `NERExtractor` without a graph store. Use `VectorStore` without decision tracking. Every component is independently swappable.
+<CardGroup cols={3}>
+  <Card title="Open Source, MIT" icon="code-branch">
+    No vendor lock-in, no paywalled features. Every line of code is available and forkable.
+  </Card>
+  <Card title="Production Ready" icon="circle-check">
+    1,000+ passing tests, `PipelineValidator`, `FailureHandler` with exponential backoff, 12 security fixes in v0.5.0.
+  </Card>
+  <Card title="Modular by Design" icon="puzzle-piece">
+    Import only what you need. Use `NERExtractor` without a graph store. Every component is independently swappable.
+  </Card>
+</CardGroup>

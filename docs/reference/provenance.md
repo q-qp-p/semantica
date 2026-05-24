@@ -1,85 +1,113 @@
 ---
 title: "Provenance Module"
-description: "W3C PROV-O compliant lineage tracking, source attribution, and audit trails across all modules."
+description: "W3C PROV-O compliant lineage tracking, source attribution, tamper-evident checksums, and audit trails across all modules."
 icon: "link"
 ---
 
 `semantica.provenance` tracks the full lineage of every fact — from raw ingestion through extraction, reasoning, and export. Compliant with W3C PROV-O, suitable for HIPAA, SOX, GDPR, and FDA 21 CFR Part 11 environments.
 
+## Exported Classes
+
+```python
+from semantica.provenance import (
+    ProvenanceManager,   # track entities, get lineage, export PROV-O
+    ProvenanceEntry,     # single provenance record (entity_id, source, method, ...)
+    SourceReference,     # rich source pointer (DOI, page, quote, URL)
+    ProvenanceStorage,   # abstract storage backend
+    InMemoryStorage,     # default in-memory backend
+    SQLiteStorage,       # persistent SQLite backend for production
+    compute_checksum,    # compute tamper-evident hash for an entry
+    verify_checksum,     # verify integrity of a stored entry
+)
+
+# GraphBuilderWithProvenance is in semantica.kg, not semantica.provenance
+from semantica.kg import GraphBuilderWithProvenance
+```
+
 ## What You Get
 
-- **`ProvenanceManager`** — track entities, relationships, and activities with source attribution
-- **`ActivityTracker`** — record pipeline activities and which entities they produced or consumed
+- **`ProvenanceManager`** — track entities and relationships with source attribution and lineage retrieval
+- **`ProvenanceEntry`** / **`SourceReference`** — structured records with DOI, page, quote, confidence, and timestamp
+- **`InMemoryStorage`** / **`SQLiteStorage`** — swappable persistence backends
+- **`compute_checksum`** / **`verify_checksum`** — tamper-evident integrity verification
 - **Lineage graph** — full upstream lineage from any entity back to its source document
-- **W3C PROV-O export** — serialize lineage as Turtle RDF for compliance reporting
-- **`GraphBuilderWithProvenance`** — drop-in replacement that auto-tracks every node and edge
+- **W3C PROV-O export** — serialize lineage as Turtle RDF or JSON-LD for compliance reporting
+- **`GraphBuilderWithProvenance`** (in `semantica.kg`) — drop-in replacement that auto-tracks every node and edge
 
 ## ProvenanceManager
 
 ```python
-from semantica.provenance import ProvenanceManager
+from semantica.provenance import ProvenanceManager, InMemoryStorage, SQLiteStorage
 
-manager = ProvenanceManager()
+# In-memory (default) — fast, not persisted across restarts
+manager = ProvenanceManager(storage=InMemoryStorage())
 
-# Track an extracted entity
+# SQLite — persisted, production-ready
+manager = ProvenanceManager(storage=SQLiteStorage("provenance.db"))
+
+# Track an extracted entity (with rich source reference)
 manager.track_entity(
     entity_id="apple_inc",
     source="annual_report_2023.pdf",
-    entity_type="Organization",
-    extraction_method="llm",
-    confidence=0.98
+    source_location="Page 12, Section 3.1",
+    source_quote="Apple Inc. was incorporated on January 3, 1977.",
+    confidence=0.98,
 )
 
 # Track an extracted relationship
-manager.track_relationship(
-    rel_id="steve_jobs_founded_apple",
+manager.track_entity(
+    entity_id="steve_jobs_founded_apple",
     source="annual_report_2023.pdf",
-    extraction_method="llm",
-    confidence=0.92
+    confidence=0.92,
 )
 
 # Retrieve full lineage for any entity
-lineage = manager.get_lineage("apple_inc")
-print(f"Source:      {lineage.source}")
-print(f"Extracted:   {lineage.extracted_at}")
-print(f"Method:      {lineage.extraction_method}")
-print(f"Confidence:  {lineage.confidence}")
+entry = manager.get_lineage("apple_inc")
+print(f"Source:     {entry.source}")
+print(f"Quote:      {entry.source_quote}")
+print(f"Confidence: {entry.confidence}")
+print(f"Tracked at: {entry.tracked_at}")
 ```
 
-## Activity Tracking
+## SourceReference
 
-Record pipeline activities — what was consumed and what was produced:
+`SourceReference` provides a rich, citable pointer to the exact location in a source document:
 
 ```python
-# Start and end an activity
-activity_id = manager.start_activity(
-    activity_type="ner_extraction",
-    used=["annual_report_2023.pdf"],
-    generated=["apple_inc", "steve_jobs"]
+from semantica.provenance import SourceReference
+
+ref = SourceReference(
+    document_id="annual_report_2023.pdf",
+    page=12,
+    section="3.1",
+    quote="Apple Inc. was incorporated on January 3, 1977.",
+    url="https://investor.apple.com/sec-filings/annual-reports/",
+    doi="10.0000/example.doi",
 )
 
-manager.end_activity(activity_id)
-
-# Query activities for an entity
-activities = manager.get_activities(entity_id="apple_inc")
-for activity in activities:
-    print(f"{activity.type} at {activity.started_at}")
-    print(f"  Used:      {activity.used}")
-    print(f"  Generated: {activity.generated}")
+manager.track_entity(
+    entity_id="apple_inc",
+    source_reference=ref,
+    confidence=0.98,
+)
 ```
 
-## Lineage Graph
+## Tamper-Evident Checksums
 
-Retrieve a full directed lineage graph from any entity back to its source:
+Verify that provenance records have not been modified after creation:
 
 ```python
-lineage_graph = manager.get_lineage_graph("apple_inc")
+from semantica.provenance import compute_checksum, verify_checksum
 
-for node in lineage_graph.nodes:
-    print(f"{node.id}: {node.type} — {node.timestamp}")
+entry = manager.get_lineage("apple_inc")
 
-for edge in lineage_graph.edges:
-    print(f"{edge.source} → {edge.target} ({edge.relation})")
+# Compute and store a checksum on first write
+checksum = compute_checksum(entry)
+
+# Later: verify the entry hasn’t been altered
+is_valid = verify_checksum(entry, checksum)
+if not is_valid:
+    raise RuntimeError("Provenance record has been tampered with!")
 ```
 
 ## W3C PROV-O Export
@@ -99,18 +127,36 @@ manager.export_all(path="provenance.jsonld", format="json-ld")
 
 ## Integration with GraphBuilder
 
-`GraphBuilderWithProvenance` automatically records provenance for every node and edge constructed:
+`GraphBuilderWithProvenance` (from `semantica.kg`) automatically records provenance for every node and edge constructed:
 
 ```python
 from semantica.kg import GraphBuilderWithProvenance
+from semantica.provenance import ProvenanceManager, SQLiteStorage
 
-builder = GraphBuilderWithProvenance(provenance=True)
-result  = builder.build_single_source(graph_data)
+prov_manager = ProvenanceManager(storage=SQLiteStorage("provenance.db"))
+builder      = GraphBuilderWithProvenance(provenance_manager=prov_manager)
+kg           = builder.build_single_source(graph_data)
 
-# Each node and edge has a source_id linking back to the originating document
-lineage = result.provenance_manager.get_lineage("apple_inc")
-print(f"Source document: {lineage.source}")
-print(f"Extracted by:    {lineage.extraction_method}")
+# Every node and edge now has full source attribution
+entry = prov_manager.get_lineage("apple_inc")
+print(f"Source document: {entry.source}")
+print(f"Confidence:      {entry.confidence}")
+```
+
+## Enable Provenance in Extractors
+
+```python
+from semantica.semantic_extract import NERExtractor
+from semantica.provenance import ProvenanceManager
+
+prov_manager = ProvenanceManager()
+
+ner      = NERExtractor(method="llm", llm_provider=llm, provenance=True)
+entities = ner.extract(text)
+
+# Retrieve lineage for the first extracted entity
+entry = prov_manager.get_lineage(entities[0]["id"])
+print(f"Source: {entry.source}")
 ```
 
 ## Compliance Standards

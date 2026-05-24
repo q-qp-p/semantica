@@ -6,6 +6,25 @@ icon: "copy"
 
 `semantica.deduplication` detects and merges duplicate entities across sources to produce a clean, single-source-of-truth knowledge graph. **v2 strategies** (`blocking_v2`, `hybrid_v2`, `semantic_v2`) are up to **7x faster** than v1 with fine-grained result control.
 
+## Exported Classes
+
+```python
+from semantica.deduplication import (
+    DuplicateDetector,      # pairwise + batch duplicate detection
+    EntityMerger,           # merge duplicate groups with per-property policies
+    SimilarityCalculator,   # Levenshtein, Jaro-Winkler, cosine, Jaccard, embedding
+    ClusterBuilder,         # Union-Find + hierarchical clustering
+    PropertyMergeRule,      # enum: KEEP_FIRST, KEEP_LONGEST, UNION, VOTING, ...
+    MergeStrategyManager,   # manage and apply merge strategies
+    # Convenience functions
+    detect_duplicates,      # quick: detect_duplicates(entities, method="semantic_v2")
+    merge_entities,         # quick: merge_entities(entities, duplicates, method="union")
+    calculate_similarity,   # quick: calculate_similarity(a, b, method="hybrid_v2")
+    # Registry
+    method_registry,        # register custom similarity functions
+)
+```
+
 ## What You Get
 
 - **`DuplicateDetector`** — pairwise and batch duplicate detection with configurable strategies

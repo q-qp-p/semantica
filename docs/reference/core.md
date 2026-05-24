@@ -6,13 +6,28 @@ icon: "gear"
 
 `semantica.core` is the coordination layer for the framework. For most tasks you should use individual modules directly (`semantica.ingest`, `semantica.kg`, etc.). Reach for Core when you need application-level lifecycle management, centralized configuration, or a plugin registry.
 
+## Exported Classes
+
+```python
+from semantica.core import (
+    Semantica,       # orchestration class — coordinates full KG pipeline
+    ConfigManager,   # YAML config loading, deep-merge, env var overrides
+    LifecycleManager,# startup/shutdown state machine + health monitoring
+    PluginRegistry,  # plugin discovery, registration, and loading
+    method_registry, # global MethodRegistry instance for custom dispatch
+)
+
+# For custom build methods:
+from semantica.core.methods import build_knowledge_base
+```
+
 ## What You Get
 
 - **`Semantica`** — orchestration class for coordinating complex multi-module workflows
 - **`ConfigManager`** — unified config loading, merging, and validation with environment variable overrides
 - **`LifecycleManager`** — startup/shutdown hooks and component health monitoring
 - **`PluginRegistry`** — dynamic plugin discovery, registration, and loading
-- **`MethodRegistry`** — register and dispatch custom orchestration methods
+- **`method_registry`** — global `MethodRegistry` instance — register and dispatch custom orchestration methods
 
 <Tip>
   **Use individual modules directly** for the vast majority of use cases. Use the `Semantica` orchestration class only when you need application-level lifecycle management or a plugin system.
@@ -167,6 +182,7 @@ Register custom orchestration methods and dispatch them by name:
 
 ```python
 from semantica.core import method_registry
+from semantica.core.methods import build_knowledge_base
 
 def fast_kb_builder(sources, **kwargs):
     # Custom logic — skip embeddings for speed
@@ -174,9 +190,22 @@ def fast_kb_builder(sources, **kwargs):
 
 method_registry.register("knowledge_base", "fast", fast_kb_builder)
 
-from semantica.core.methods import build_knowledge_base
 result = build_knowledge_base(sources=["doc.pdf"], method="fast")
 ```
+
+## When to Use Core vs. Individual Modules
+
+| Scenario | Recommended Approach |
+| -------- | -------------------- |
+| Single extraction task | `from semantica.semantic_extract import NERExtractor` |
+| Build a knowledge graph | `from semantica.kg import GraphBuilder` |
+| Multi-step pipeline | `from semantica.pipeline import Pipeline` |
+| App-level lifecycle + config | `from semantica.core import Semantica, ConfigManager` |
+| Custom dispatch / plugins | `from semantica.core import method_registry, PluginRegistry` |
+
+<Tip>
+  Use `Semantica` and `LifecycleManager` only when building a long-running application (e.g. a FastAPI service) that needs ordered startup, health checks, and graceful shutdown. For scripts and notebooks, use individual modules directly.
+</Tip>
 
 <CardGroup cols={2}>
   <Card title="Pipeline" icon="arrows-turn-to-dots" href="pipeline">

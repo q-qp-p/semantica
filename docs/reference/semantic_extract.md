@@ -6,13 +6,55 @@ icon: "magnifying-glass-chart"
 
 `semantica.semantic_extract` extracts structured information from unstructured text — the foundation of every knowledge graph in Semantica. All extractors support three modes: pattern-based (no API key), ML-based, and LLM-based.
 
+## Exported Classes
+
+```python
+from semantica.semantic_extract import (
+    # Primary extractors
+    NamedEntityRecognizer,  # full NER coordinator (confidence_threshold, merge_overlapping)
+    NERExtractor,           # core NER implementation used by NamedEntityRecognizer
+    RelationExtractor,      # typed relationship extraction
+    TripletExtractor,       # (subject, predicate, object) triplet generation
+    EventDetector,          # event detection with participants and temporal context
+    CoreferenceResolver,    # resolve pronouns and aliases to canonical entities
+    # Data types
+    Entity,                 # {id, text, type, confidence, start, end}
+    Relation,               # {subject, predicate, object, confidence}
+    Event,                  # {type, participants, temporal, location, confidence}
+    CoreferenceChain,       # list of mentions resolving to the same entity
+    # Advanced
+    EntityClassifier,       # classify entity candidates by type
+    CustomEntityDetector,   # pattern/dictionary-based custom entity detection
+    TemporalEventProcessor, # extract temporal information from events
+)
+```
+
+<Tip>
+  `NamedEntityRecognizer` is the high-level coordinator with confidence thresholding and overlap merging. `NERExtractor` is the lower-level implementation. For most use cases, start with `NERExtractor` for simplicity or `NamedEntityRecognizer` for fine-grained control.
+</Tip>
+
 ## What You Get
 
-- **`NERExtractor`** — named entity recognition: Person, Organization, Location, Date, and custom types
+- **`NERExtractor`** / **`NamedEntityRecognizer`** — named entity recognition: Person, Organization, Location, Date, and custom types
 - **`RelationExtractor`** — typed semantic relationships between entities (`founded_by`, `located_in`, etc.)
 - **`TripletExtractor`** — direct `(subject, predicate, object)` triplet generation for RDF-ready output
-- **`EventExtractor`** — event detection with participants, temporal context, and confidence scores
+- **`EventDetector`** — event detection with participants, temporal context, and confidence scores
 - **`CoreferenceResolver`** — resolve "Apple" and "the company" to the same entity across a document
+
+## Quick Start
+
+```python
+from semantica.semantic_extract import NERExtractor, RelationExtractor, TripletExtractor
+from semantica.llms import Groq
+import os
+
+text = "Apple Inc. was founded by Steve Jobs in Cupertino in 1976."
+llm  = Groq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
+
+entities      = NERExtractor(method="llm", llm_provider=llm).extract(text)
+relationships = RelationExtractor(method="llm", llm_provider=llm).extract(text, entities=entities)
+triplets      = TripletExtractor(method="llm", llm_provider=llm).extract(text)
+```
 
 <img src="/assets/img/diagrams/extraction-pipeline.svg" alt="Semantic extraction pipeline: raw text fans into NER, Relation, and Coreference extractors, then merges into a Triplet Generator" style={{ width: '100%', borderRadius: '12px', margin: '0 0 24px' }} />
 
@@ -97,18 +139,25 @@ triplets = trip.extract(text)
 
 Triplets are suitable for loading directly into a triplet store or knowledge graph.
 
-## EventExtractor
+## EventDetector
 
 Detect events with participants and temporal context:
 
 ```python
-from semantica.semantic_extract import EventExtractor
+from typing import List
+from semantica.semantic_extract import EventDetector, Event
 
-extractor = EventExtractor(method="llm", llm_provider=llm)
-events = extractor.extract(text)
+extractor = EventDetector(method="llm", llm_provider=llm)
+events: List[Event] = extractor.extract(text)
+
+for event in events:
+    print(f"Event type:   {event.type}")
+    print(f"Participants: {event.participants}")
+    print(f"Temporal:     {event.temporal}")
+    print(f"Confidence:   {event.confidence:.2f}")
 ```
 
-Output includes: event type, participants (with roles), temporal information, location, and confidence score.
+Output fields per event: `type`, `participants` (with roles), `temporal`, `location`, and `confidence`.
 
 ## CoreferenceResolver
 

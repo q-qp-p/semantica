@@ -1,21 +1,47 @@
 ---
 title: "Knowledge Graph Module"
-description: "Graph construction, temporal models, analytics, and distance intelligence."
+description: "Graph construction, temporal models, analytics, similarity scoring, and structural embeddings."
 icon: "diagram-project"
 ---
 
-`semantica.kg` transforms extracted entities and relationships into structured, queryable knowledge graphs. It includes temporal support, a full suite of graph analytics algorithms, node embeddings, and Distance Intelligence (v0.5.0).
+`semantica.kg` transforms extracted entities and relationships into structured, queryable knowledge graphs. It includes temporal support, a full suite of graph analytics algorithms, node embeddings, and structural similarity scoring.
+
+## Exported Classes
+
+```python
+from semantica.kg import (
+    KnowledgeGraph,             # core graph data structure
+    GraphBuilder,               # construct from entities + relationships
+    GraphBuilderWithProvenance, # auto-tracks provenance for every node/edge
+    EntityResolver,             # entity deduplication during construction
+    GraphAnalyzer,              # temporal evolution, diversity metrics
+    GraphValidator,             # schema and constraint validation
+    TemporalGraphQuery,         # point-in-time snapshots, diffs, interval queries
+    TemporalPatternDetector,    # sequence/cycle/trend detection
+    TemporalVersionManager,     # snapshot creation and version comparison
+    TemporalNormalizer,         # normalize timestamps across granularities
+    BiTemporalFact,             # bi-temporal fact model (transaction + valid time)
+    CentralityCalculator,       # degree, betweenness, closeness, PageRank, eigenvector
+    CommunityDetector,          # Louvain, Leiden, Label Propagation, K-Clique
+    PathFinder,                 # Dijkstra, A*, BFS, K-Shortest paths
+    LinkPredictor,              # Preferential Attachment, Jaccard, Adamic-Adar
+    NodeEmbedder,               # Node2Vec, DeepWalk structural embeddings
+    SimilarityCalculator,       # cosine, Euclidean, Manhattan, correlation similarity
+    ConnectivityAnalyzer,       # connected components, bridges, density
+    ProvenanceTracker,          # source tracking and lineage management
+)
+```
 
 ## What You Get
 
 - **`GraphBuilder`** — construct graphs from entities and relationships with automatic entity merging
-- **`TemporalKnowledgeGraph`** — time-aware edges (`valid_from`/`valid_until`) and point-in-time queries (v0.4.0)
-- **`DistanceCalculator`** — semantic neighborhoods, N×N distance matrices, and distance band classification (v0.5.0)
+- **`TemporalGraphQuery`** — time-aware point-in-time snapshots, diffs, and Allen interval queries (v0.4.0)
+- **`SimilarityCalculator`** — cosine, Euclidean, Manhattan, and correlation similarity scoring
 - **`CentralityCalculator`** — PageRank, degree, betweenness, closeness, eigenvector centrality
 - **`CommunityDetector`** — Louvain, Leiden, Label Propagation, K-Clique community detection
 - **`PathFinder`** — Dijkstra, A\*, BFS, K-Shortest path algorithms
 - **`LinkPredictor`** — Preferential Attachment, Jaccard, Adamic-Adar link prediction
-- **`NodeEmbedder`** — Node2Vec, DeepWalk, Word2Vec structural embeddings
+- **`NodeEmbedder`** — Node2Vec, DeepWalk structural embeddings
 
 <Tip>
   For conflict detection and advanced entity resolution, use `semantica.conflicts` and `semantica.deduplication` alongside this module.
@@ -42,52 +68,66 @@ kg = builder.build(entities=entities, relationships=relationships)
 
 ## Temporal Knowledge Graphs (v0.4.0)
 
-Attach `valid_from` / `valid_until` time windows to nodes and edges for point-in-time queries and historical analysis:
+Use `TemporalGraphQuery` to attach `valid_from`/`valid_until` windows and query time-aware graphs:
 
 ```python
-from semantica.kg import TemporalKnowledgeGraph, TemporalGraphQuery
+from semantica.kg import GraphBuilder, TemporalGraphQuery, TemporalVersionManager
 from datetime import datetime
 
-tkg = TemporalKnowledgeGraph()
-
-# Nodes and edges carry explicit validity windows
-tkg.add_node("ceo_role",  valid_from=datetime(2020, 1, 1), valid_until=datetime(2023, 6, 1))
-tkg.add_edge(
-    "alice", "acme_corp", "ceo_of",
-    valid_from=datetime(2020, 1, 1),
-    valid_until=datetime(2023, 6, 1)
-)
+# Build a time-aware graph
+builder = GraphBuilder()
+kg = builder.build(sources=[
+    {
+        "entities": [
+            {"id": "alice",     "type": "Person"},
+            {"id": "acme_corp", "type": "Organization"},
+        ],
+        "relationships": [
+            {
+                "source": "alice", "target": "acme_corp", "type": "ceo_of",
+                "valid_from":  "2020-01-01",
+                "valid_until": "2023-06-01",
+            }
+        ]
+    }
+])
 
 # Point-in-time snapshot
-snapshot = tkg.at(datetime(2021, 6, 15))
+query         = TemporalGraphQuery(kg)
+snapshot_2021 = query.at_time("2021-06-15")
+snapshot_2023 = query.at_time("2023-01-01")
 
 # Diff between two snapshots
-query = TemporalGraphQuery(tkg)
-snapshot_2020 = query.at_time("2020-01-01")
-snapshot_2023 = query.at_time("2023-01-01")
-diff = snapshot_2023.minus(snapshot_2020)
-print(f"New nodes since 2020: {len(diff.nodes)}")
+diff = query.diff("2020-01-01", "2023-01-01")
+print(f"New nodes since 2020: {len(diff.get('added_nodes', []))}")
+
+# Versioned snapshots
+versioner = TemporalVersionManager()
+versioner.create_snapshot(kg, version_label="2024-Q1")
 ```
 
 Supports all 13 Allen interval algebra relations (before, after, meets, overlaps, during, starts, finishes, equals, and their inverses). OWL-Time export available.
 
-## Distance Intelligence (v0.5.0)
+## Similarity Scoring
 
-Semantic neighborhood exploration for any entity in the graph:
+`SimilarityCalculator` computes cosine, Euclidean, Manhattan, and correlation similarity between node embeddings:
 
 ```python
-from semantica.kg import DistanceCalculator
+from semantica.kg import SimilarityCalculator, NodeEmbedder
 
-calc = DistanceCalculator(kg)
+# First compute structural embeddings
+embedder   = NodeEmbedder(method="node2vec", embedding_dimension=128)
+embeddings = embedder.compute_embeddings(kg, ["Person", "Organization"], ["RELATED_TO"])
 
-# Semantic neighborhood of a single node
-neighborhood = calc.semantic_neighborhood("Apple Inc.", radius=0.4)
+# Then compare nodes by embedding similarity
+calc  = SimilarityCalculator()
+score = calc.cosine_similarity(embeddings["Apple Inc."], embeddings["Google"])
+print(f"Apple–Google structural similarity: {score:.3f}")
 
-# N×N pairwise distance matrix
-matrix = calc.distance_matrix(["Apple Inc.", "Google", "Microsoft"])
-
-# Classify nodes into distance bands: "near" | "mid" | "far"
-bands = calc.classify_bands(neighborhood)
+# Find structurally similar nodes
+similar = embedder.find_similar_nodes(kg, "Apple Inc.", top_k=5)
+for node in similar:
+    print(f"{node['id']}: {node['score']:.3f}")
 ```
 
 ## Graph Analytics

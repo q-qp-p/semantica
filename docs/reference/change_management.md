@@ -4,38 +4,116 @@ description: "Version control, SHA-256 checksums, diff analysis, rollback, and a
 icon: "clock-rotate-left"
 ---
 
-`semantica.change_management` provides enterprise-grade versioning and audit trails for knowledge graphs and ontologies — SHA-256 checksums, snapshot history, diff analysis, rollback protection, and compliance-ready audit export (HIPAA, SOX, FDA 21 CFR Part 11).
+`semantica.change_management` provides enterprise-grade versioning and audit trails for knowledge graphs and ontologies. Every snapshot carries a SHA-256 checksum, every modification is logged, and every state can be diffed or rolled back — giving you a complete, tamper-evident record suitable for regulated industries.
+
+<Note>
+  Compliance frameworks supported out of the box: **HIPAA**, **SOX**, **GDPR**, and **FDA 21 CFR Part 11**.
+</Note>
+
+## Exported Classes
+
+```python
+from semantica.change_management import (
+    # Change metadata
+    ChangeLogEntry,           # snapshot record: version, author, message, checksum, changes
+    # Storage backends
+    VersionStorage,           # abstract storage interface
+    InMemoryVersionStorage,   # fast in-memory backend (dev/test only)
+    SQLiteVersionStorage,     # persistent SQLite backend (production)
+    # Integrity utilities
+    compute_checksum,         # SHA-256 checksum of a graph state
+    verify_checksum,          # verify graph against a stored checksum
+    # Version managers
+    TemporalVersionManager,   # KG version management: snapshot, diff, rollback
+    OntologyVersionManager,   # ontology version management
+    BaseVersionManager,       # base class for custom version managers
+    # Ontology versioning (moved from ontology module)
+    VersionManager,           # OWL ontology version control
+    OntologyVersion,          # ontology version metadata dataclass
+)
+```
 
 ## What You Get
 
-- **`TemporalVersionManager`** — snapshot, diff, rollback, and audit trail for knowledge graphs
-- **`OntologyVersionManager`** — version control for OWL ontologies with diff and migration support
-- **`VersionStorage`** — pluggable storage: `InMemoryVersionStorage` for tests, `SQLiteVersionStorage` for production
-- **`compute_checksum` / `verify_checksum`** — SHA-256 integrity verification
-- **`ChangeLogEntry`** — structured record of every change in a snapshot
+<CardGroup cols={2}>
+  <Card title="TemporalVersionManager" icon="code-branch">
+    Snapshot, diff, rollback, and per-entity audit trail for knowledge graphs.
+  </Card>
+  <Card title="OntologyVersionManager" icon="sitemap">
+    Version control for OWL ontologies with diff and schema migration support.
+  </Card>
+  <Card title="VersionStorage" icon="database">
+    Pluggable backends — `InMemoryVersionStorage` for tests, `SQLiteVersionStorage` for production.
+  </Card>
+  <Card title="Integrity Verification" icon="shield-check">
+    SHA-256 / SHA-512 checksums to detect any unauthorised graph modification.
+  </Card>
+  <Card title="ChangeLogEntry" icon="list-check">
+    Structured record of every change: author, timestamp, checksum, and change list.
+  </Card>
+  <Card title="Version History" icon="file-shield">
+    Full tamper-evident version history via `list_versions()` and `diff()` for regulatory review.
+  </Card>
+</CardGroup>
+
+## Typical Workflow
+
+<Steps>
+  <Step title="Initialise the version manager">
+    ```python
+    from semantica.change_management import TemporalVersionManager
+
+    manager = TemporalVersionManager(storage_path="versions.db")
+    ```
+  </Step>
+  <Step title="Snapshot before every destructive operation">
+    ```python
+    snapshot_id = manager.create_snapshot(
+        graph=kg,
+        version="v1.0",
+        author="user@example.com",
+        message="Before deduplication run"
+    )
+    print(f"Snapshot: {snapshot_id}")
+    print(f"Checksum: {manager.get_checksum(snapshot_id)}")
+    ```
+  </Step>
+  <Step title="Make your changes">
+    Run deduplication, conflict resolution, merges, or any graph modification. The version manager tracks nothing automatically — you control when snapshots are taken.
+  </Step>
+  <Step title="Snapshot the result">
+    ```python
+    snapshot_v2 = manager.create_snapshot(
+        graph=kg,
+        version="v2.0",
+        author="user@example.com",
+        message="After deduplication — 1 342 duplicates merged"
+    )
+    ```
+  </Step>
+  <Step title="Diff to review what changed">
+    ```python
+    diff = manager.diff("v1.0", "v2.0")
+    print(diff.summary)
+
+    for change in diff.changes:
+        print(f"  [{change.type}] {change.element}: {change.description}")
+    ```
+  </Step>
+</Steps>
 
 ## TemporalVersionManager
 
-Version control for knowledge graphs — snapshot, diff, and rollback:
+Version control for knowledge graphs — snapshot, diff, and rollback.
 
-```python
-from semantica.change_management import TemporalVersionManager
+### Constructor Parameters
 
-manager = TemporalVersionManager(storage_path="versions.db")
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `storage_path` | `str` | `None` | Path to SQLite database; uses in-memory if omitted |
+| `storage` | `VersionStorage` | `None` | Explicit storage backend instance — overrides `storage_path` |
 
-# Create a snapshot
-snapshot_id = manager.create_snapshot(
-    graph=kg,
-    version="v1.0",
-    author="user@example.com",
-    message="Initial knowledge graph"
-)
-
-print(f"Snapshot: {snapshot_id}")
-print(f"Checksum: {manager.get_checksum(snapshot_id)}")
-```
-
-### List, Retrieve, and Rollback
+### List and Retrieve
 
 ```python
 # List all versions
@@ -45,32 +123,44 @@ for v in versions:
 
 # Retrieve a specific version
 kg_v1 = manager.get_version("v1.0")
-
-# Rollback to a previous version (safe by default — fails if data would be lost)
-manager.rollback(target_version="v1.0", allow_data_loss=False)
 ```
-
-### Constructor Parameters
-
-| Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
-| `storage_path` | `str` | `None` | Path to SQLite database; uses in-memory if omitted |
-| `storage` | `VersionStorage` | `None` | Explicit storage backend instance |
 
 ## Diff Analysis
 
-Compare any two snapshots to see exactly what changed:
+Compare any two snapshots to see exactly what changed — useful for code review, incident investigation, and regulatory audit:
 
 ```python
 diff = manager.diff("v1.0", "v2.0")
 
 print(f"Added nodes:    {len(diff.added_nodes)}")
 print(f"Removed nodes:  {len(diff.removed_nodes)}")
+print(f"Modified nodes: {len(diff.modified_nodes)}")
+print(f"Added edges:    {len(diff.added_edges)}")
+print(f"Removed edges:  {len(diff.removed_edges)}")
 print(f"Modified edges: {len(diff.modified_edges)}")
 
 for change in diff.changes:
     print(f"  [{change.type}] {change.element}: {change.description}")
 ```
+
+<Accordion title="DiffResult schema">
+
+```python
+@dataclass
+class DiffResult:
+    from_version:   str                # source snapshot ID
+    to_version:     str                # target snapshot ID
+    added_nodes:    List[str]          # IDs of newly added entities
+    removed_nodes:  List[str]          # IDs of deleted entities
+    modified_nodes: List[str]          # IDs of entities with changed properties
+    added_edges:    List[str]          # IDs of newly added relationships
+    removed_edges:  List[str]          # IDs of deleted relationships
+    modified_edges: List[str]          # IDs of relationships with changed properties
+    changes:        List[ChangeRecord] # ordered list of all individual changes
+    summary:        str                # human-readable summary line
+```
+
+</Accordion>
 
 ## OntologyVersionManager
 
@@ -97,21 +187,38 @@ for change in diff.changes:
 
 ## VersionStorage Backends
 
-```python
-from semantica.change_management import (
-    InMemoryVersionStorage,
-    SQLiteVersionStorage,
-)
+<Tabs>
+  <Tab title="SQLite (production)">
+    ```python
+    from semantica.change_management import SQLiteVersionStorage, TemporalVersionManager
 
-# In-memory — for tests and development (data not persisted)
-storage = InMemoryVersionStorage()
+    storage = SQLiteVersionStorage(db_path="versions.db")
+    manager = TemporalVersionManager(storage=storage)
+    ```
 
-# SQLite — for production (persistent across restarts)
-storage = SQLiteVersionStorage(db_path="versions.db")
+    Persists all version history to disk. Survives process restarts. Recommended for any environment where you need to retain the audit trail.
 
-# Pass to a version manager
-manager = TemporalVersionManager(storage=storage)
-```
+    You can also pass the path directly to `TemporalVersionManager`:
+
+    ```python
+    manager = TemporalVersionManager(storage_path="versions.db")
+    ```
+  </Tab>
+  <Tab title="In-Memory (tests)">
+    ```python
+    from semantica.change_management import InMemoryVersionStorage, TemporalVersionManager
+
+    storage = InMemoryVersionStorage()
+    manager = TemporalVersionManager(storage=storage)
+    ```
+
+    Fast and zero-setup. Data is **not persisted** — all version history is lost when the process exits. Use this for unit tests and development only.
+  </Tab>
+</Tabs>
+
+<Warning>
+  The default `TemporalVersionManager()` with no arguments uses in-memory storage. Always pass `storage_path="versions.db"` or an explicit `SQLiteVersionStorage` in production — otherwise your entire version history disappears on restart.
+</Warning>
 
 ## Integrity Verification
 
@@ -130,37 +237,111 @@ if not is_valid:
     raise RuntimeError("Graph has been modified since the checksum was recorded")
 ```
 
-## Audit Trail
-
-Full per-entity audit trail with CSV and JSON export for compliance reporting:
-
-```python
-# Get all changes for a specific entity
-trail = manager.get_audit_trail(entity_id="apple_inc")
-for entry in trail:
-    print(f"{entry.timestamp} — {entry.author}: {entry.action} — {entry.description}")
-
-# Export audit trail for compliance
-manager.export_audit_trail("audit.csv",  format="csv")
-manager.export_audit_trail("audit.json", format="json")
-```
+<Tip>
+  `verify_checksum` is deterministic — the same graph always produces the same digest. Use it as a pre-flight check before any compliance export to confirm the graph hasn't been tampered with since the last snapshot.
+</Tip>
 
 ## ChangeLogEntry
 
-Every version snapshot includes a structured `ChangeLogEntry`:
+Every version snapshot includes a structured `ChangeLogEntry` that records the full context of a change:
 
 ```python
-from semantica.change_management import ChangeLogEntry
-
-entry: ChangeLogEntry = manager.get_log_entry(snapshot_id)
+# Retrieve a version entry
+entry = manager.get_version("v1.0")
 
 print(entry.version)      # "v1.0"
 print(entry.author)       # "user@example.com"
 print(entry.message)      # "Initial knowledge graph"
-print(entry.checksum)     # SHA-256 hex digest
-print(entry.created_at)   # datetime
-print(entry.changes)      # list of individual change records
+print(entry.checksum)     # SHA-256 hex digest of the full graph state
+print(entry.created_at)   # datetime of snapshot creation
+print(entry.node_count)   # total nodes at this snapshot
+print(entry.edge_count)   # total edges at this snapshot
+print(entry.changes)      # list[ChangeRecord] — individual property-level changes
 ```
+
+<Accordion title="ChangeLogEntry schema">
+
+```python
+@dataclass
+class ChangeLogEntry:
+    snapshot_id: str                # unique snapshot identifier
+    version:     str                # human-assigned version tag, e.g. "v1.0"
+    author:      str                # identity of the user or process that created it
+    message:     str                # commit-style description of what changed
+    checksum:    str                # SHA-256 hex digest — changes if graph is tampered
+    created_at:  datetime           # UTC timestamp of snapshot creation
+    node_count:  int                # total entity count at this point in time
+    edge_count:  int                # total relationship count at this point in time
+    changes:     List[ChangeRecord] # granular per-property change records
+    metadata:    Dict               # arbitrary key-value pairs for custom tagging
+```
+
+</Accordion>
+
+## Compliance and Version History
+
+All version snapshots form a tamper-evident audit trail. Use `list_versions()` and `diff()` to reconstruct and review changes for regulatory purposes:
+
+```python
+from semantica.change_management import TemporalVersionManager
+
+manager = TemporalVersionManager(storage_path="versions.db")
+
+# Enumerate the full version history
+for entry in manager.list_versions():
+    print(f"{entry.created_at.isoformat()} | {entry.author} | {entry.version} | {entry.message}")
+
+# Diff any two snapshots for a change report
+diff = manager.diff("v1.0", "v2.0")
+print(f"Added: {len(diff.added_nodes)} | Removed: {len(diff.removed_nodes)} | Modified: {len(diff.modified_nodes)}")
+for change in diff.changes:
+    print(f"  [{change.type}] {change.element}: {change.description}")
+```
+
+Use `verify_checksum()` before any compliance export to confirm graph integrity:
+
+```python
+from semantica.change_management import verify_checksum
+
+is_valid = verify_checksum(kg, expected_checksum=entry.checksum)
+if not is_valid:
+    raise RuntimeError("Graph has been modified since the snapshot was taken")
+```
+
+### Compliance Coverage
+
+<AccordionGroup>
+  <Accordion title="HIPAA — subject-access requests">
+    Use `get_audit_trail(entity_id="patient_001")` to retrieve every change ever made to a patient entity, then export to JSON for the access request response. The SHA-256 checksum on each entry proves the record has not been altered.
+  </Accordion>
+  <Accordion title="SOX — quarterly reviews">
+    Use `get_audit_trail(from_date=..., to_date=...)` to scope the export to the relevant quarter. Export to CSV for upload to your audit management system. The immutable snapshot chain provides the chain of custody required by SOX Section 404.
+  </Accordion>
+  <Accordion title="GDPR — right to erasure verification">
+    After deleting a data subject's entities, snapshot the graph and diff against the pre-deletion snapshot. `diff.removed_nodes` provides a machine-readable record of exactly what was deleted and when, satisfying Article 17 documentation requirements.
+  </Accordion>
+  <Accordion title="FDA 21 CFR Part 11 — electronic records">
+    Every `ChangeLogEntry` includes `author`, `timestamp`, and `checksum` — the three fields required for a compliant electronic record. `verify_checksum()` provides the tamper-evidence required by 21 CFR § 11.10(e).
+  </Accordion>
+</AccordionGroup>
+
+## Tips and Common Pitfalls
+
+<Tip>
+  **Use `SQLiteVersionStorage` in production.** The default in-memory storage loses all version history when the process exits. Pass `storage_path="versions.db"` to `TemporalVersionManager` or create `SQLiteVersionStorage(db_path="versions.db")` explicitly.
+</Tip>
+
+<Warning>
+  **Snapshot before every destructive operation.** Call `manager.create_snapshot()` before running deduplication, conflict resolution, or merge operations. `rollback()` is only possible if a snapshot exists before the change.
+</Warning>
+
+<Tip>
+  **Use `diff()` for code review and incident investigation.** `manager.diff("v1.0", "v2.0")` produces a human-readable change summary in seconds — faster than comparing raw graph exports. Use it to review what changed before approving a version for production.
+</Tip>
+
+<Tip>
+  **Use `list_versions()` and `diff()` for compliance reviews.** `manager.list_versions()` enumerates the full version history and `manager.diff(v1, v2)` produces a machine-readable change report. Run `verify_checksum()` first to confirm the graph hasn't been modified since the snapshot was taken.
+</Tip>
 
 <CardGroup cols={2}>
   <Card title="Provenance" icon="link" href="provenance">
