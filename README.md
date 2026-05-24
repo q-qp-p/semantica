@@ -19,7 +19,7 @@
 **[Website](https://getsemantica.ai/)** · **[Docs](https://docs.getsemantica.ai/)** · **[Discord](https://discord.gg/sV34vps5hH)** · **[Changelog](CHANGELOG.md)**
 
 
-⭐ **Star us if this solves your problem** · 🍴 Fork us · 💬 [Join our Discord](https://discord.gg/sV34vps5hH) · 🐦 [Follow on X](https://x.com/BuildSemantica)
+⭐ **Star us if this solves your problem** · 🍴 Fork us · 💬 [Join our Discord](https://discord.gg/sV34vps5hH) 
 
 > **Most AI agents act without a trail. Semantica adds the layer your stack is missing: structured context graphs, auditable decision records, and full provenance from every output back to its source — so your AI isn't just powerful, it's accountable.**
 
