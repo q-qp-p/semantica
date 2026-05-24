@@ -1,48 +1,48 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <!-- App icon background -->
-  <rect width="64" height="64" rx="14" fill="white"/>
+  <rect width="64" height="64" rx="12" fill="white"/>
 
-  <!-- Brain outline (two-lobe, front view) -->
+  <!-- Brain outline (two-lobe, front view) — scaled up to fill more space -->
   <path d="
-    M 32,7
-    C 26,7 18,11 14,17
-    C 10,23 8,30 10,37
-    C 12,44 17,50 23,52
-    C 25,58 28,63 32,63
-    C 36,63 39,58 41,52
-    C 47,50 52,44 54,37
-    C 56,30 54,23 50,17
-    C 46,11 38,7 32,7 Z
-  " fill="none" stroke="#1A5B6A" stroke-width="2"/>
+    M 32,4
+    C 25,4 16,9 12,16
+    C 8,23 6,31 8,39
+    C 10,46 16,53 23,55
+    C 25,61 28,64 32,64
+    C 36,64 39,61 41,55
+    C 48,53 54,46 56,39
+    C 58,31 56,23 52,16
+    C 48,9 39,4 32,4 Z
+  " fill="none" stroke="#1A5B6A" stroke-width="2.2"/>
 
   <!-- Central sulcus -->
-  <path d="M 32,7 C 33,22 32,45 32,63" fill="none" stroke="#1A5B6A" stroke-width="1.5" opacity="0.5"/>
+  <path d="M 32,4 C 33,20 32,46 32,64" fill="none" stroke="#1A5B6A" stroke-width="1.6" opacity="0.5"/>
 
   <!-- Left hemisphere fold -->
-  <path d="M 10,26 C 14,24 18,24 20,27" fill="none" stroke="#1A5B6A" stroke-width="1" opacity="0.5"/>
+  <path d="M 8,24 C 13,22 18,22 21,26" fill="none" stroke="#1A5B6A" stroke-width="1.1" opacity="0.5"/>
 
   <!-- Right hemisphere fold -->
-  <path d="M 54,26 C 50,24 46,24 44,27" fill="none" stroke="#1A5B6A" stroke-width="1" opacity="0.5"/>
+  <path d="M 56,24 C 51,22 46,22 43,26" fill="none" stroke="#1A5B6A" stroke-width="1.1" opacity="0.5"/>
 
   <!-- Neural network edges -->
-  <g stroke="#2AABCC" stroke-width="1.3">
-    <line x1="19" y1="17" x2="32" y2="27"/>
-    <line x1="45" y1="17" x2="32" y2="27"/>
-    <line x1="10" y1="33" x2="32" y2="27"/>
-    <line x1="54" y1="33" x2="32" y2="27"/>
-    <line x1="18" y1="46" x2="32" y2="27"/>
-    <line x1="46" y1="46" x2="32" y2="27"/>
-    <line x1="19" y1="17" x2="45" y2="17"/>
-    <line x1="10" y1="33" x2="18" y2="46"/>
-    <line x1="54" y1="33" x2="46" y2="46"/>
+  <g stroke="#2AABCC" stroke-width="1.4">
+    <line x1="17" y1="15" x2="32" y2="26"/>
+    <line x1="47" y1="15" x2="32" y2="26"/>
+    <line x1="8"  y1="33" x2="32" y2="26"/>
+    <line x1="56" y1="33" x2="32" y2="26"/>
+    <line x1="16" y1="47" x2="32" y2="26"/>
+    <line x1="48" y1="47" x2="32" y2="26"/>
+    <line x1="17" y1="15" x2="47" y2="15"/>
+    <line x1="8"  y1="33" x2="16" y2="47"/>
+    <line x1="56" y1="33" x2="48" y2="47"/>
   </g>
 
   <!-- Neural nodes -->
-  <circle cx="19" cy="17" r="3.5" fill="#F5A623" stroke="white" stroke-width="1"/>
-  <circle cx="45" cy="17" r="3.5" fill="#2AABCC" stroke="white" stroke-width="1"/>
-  <circle cx="10" cy="33" r="3.5" fill="#2AABCC" stroke="white" stroke-width="1"/>
-  <circle cx="32" cy="27" r="4.5" fill="#2AABCC" stroke="white" stroke-width="1.5"/>
-  <circle cx="54" cy="33" r="3.5" fill="#2AABCC" stroke="white" stroke-width="1"/>
-  <circle cx="18" cy="46" r="3.5" fill="#2AABCC" stroke="white" stroke-width="1"/>
-  <circle cx="46" cy="46" r="3.5" fill="#F5A623" stroke="white" stroke-width="1"/>
+  <circle cx="17" cy="15" r="4"   fill="#F5A623" stroke="white" stroke-width="1.2"/>
+  <circle cx="47" cy="15" r="4"   fill="#2AABCC" stroke="white" stroke-width="1.2"/>
+  <circle cx="8"  cy="33" r="4"   fill="#2AABCC" stroke="white" stroke-width="1.2"/>
+  <circle cx="32" cy="26" r="5"   fill="#2AABCC" stroke="white" stroke-width="1.5"/>
+  <circle cx="56" cy="33" r="4"   fill="#2AABCC" stroke="white" stroke-width="1.2"/>
+  <circle cx="16" cy="47" r="4"   fill="#2AABCC" stroke="white" stroke-width="1.2"/>
+  <circle cx="48" cy="47" r="4"   fill="#F5A623" stroke="white" stroke-width="1.2"/>
 </svg>
