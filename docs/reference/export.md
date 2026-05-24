@@ -41,8 +41,10 @@ icon: "file-export"
   </Step>
   <Step title="Export the graph">
     ```python
-    # Interactive HTML — opens in browser, supports hover and click
-    exporter.export_to_file(graph, "output.ttl", format="turtle")
+    # Export to RDF string, then write to file
+    rdf_str = exporter.export_to_rdf(graph, format="turtle")
+    with open("output.ttl", "w") as f:
+        f.write(rdf_str)
     ```
   </Step>
   <Step title="Use convenience functions for one-liners">
@@ -75,20 +77,14 @@ icon: "file-export"
 
     exporter = RDFExporter()
 
-    # Turtle (most readable RDF format)
-    exporter.export_to_file(graph, "output.ttl",    format="turtle")
+    # Export to RDF string — write to file manually
+    rdf_str = exporter.export_to_rdf(graph, format="turtle")   # Turtle (most readable)
+    rdf_str = exporter.export_to_rdf(graph, format="json-ld")  # JSON-LD (APIs, Linked Data)
+    rdf_str = exporter.export_to_rdf(graph, format="nt")       # N-Triples (streaming-friendly)
+    rdf_str = exporter.export_to_rdf(graph, format="xml")      # RDF/XML (W3C standard)
 
-    # JSON-LD (best for APIs and Linked Data)
-    exporter.export_to_file(graph, "output.jsonld", format="json-ld")
-
-    # N-Triples (streaming-friendly, one triple per line)
-    exporter.export_to_file(graph, "output.nt",     format="nt")
-
-    # RDF/XML (W3C standard, broadest compatibility)
-    exporter.export_to_file(graph, "output.xml",    format="xml")
-
-    # Export to string instead of file
-    rdf_str = exporter.export_to_rdf(graph, format="turtle")
+    with open("output.ttl", "w") as f:
+        f.write(exporter.export_to_rdf(graph, format="turtle"))
     ```
 
     **Custom namespace management:**
@@ -146,9 +142,9 @@ icon: "file-export"
     ```
 
     ```python
-    from semantica.export import YAMLExporter
+    from semantica.export import SemanticNetworkYAMLExporter
 
-    exporter = YAMLExporter()
+    exporter = SemanticNetworkYAMLExporter()
     exporter.export(graph, "graph.yaml")
 
     yaml_str = exporter.to_string(graph)
@@ -307,7 +303,7 @@ export_graph(graph,   "graph.graphml", format="graphml")
 | `dot` | `GraphExporter` | `.dot` | Graphviz rendering |
 | `owl` | `OWLExporter` | `.owl` / `.ttl` | OWL 2.0 ontology distribution |
 | `csv` | `CSVExporter` | `.csv` | Spreadsheets, simple pipelines |
-| `yaml` | `YAMLExporter` | `.yaml` | Human-readable, config-driven use |
+| `yaml` | `SemanticNetworkYAMLExporter` | `.yaml` | Human-readable, config-driven use |
 | `arrow` | `ArrowExporter` | `.arrow` | Zero-copy inter-process transfer |
 | `numpy` | `VectorExporter` | `.npy` | NumPy arrays from embeddings |
 | `faiss` | `VectorExporter` | `.faiss` | Direct FAISS index files |
@@ -326,7 +322,7 @@ export_graph(graph,   "graph.graphml", format="graphml")
 </Tip>
 
 <Warning>
-  **Stream large graphs with `export_stream()`.** For graphs with more than 500k nodes, use `exporter.export_stream(graph, ...)` instead of `exporter.export_to_file()`. Streaming writes incrementally without buffering the full graph in memory — without it, a million-node export will likely OOM.
+  **Stream large graphs with `export_stream()`.** For graphs with more than 500k nodes, use `exporter.export_stream(graph, ...)` instead of building the full RDF string in memory. Streaming writes incrementally — without it, a million-node export will likely OOM.
 </Warning>
 
 <Tip>

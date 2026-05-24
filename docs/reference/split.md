@@ -71,7 +71,7 @@ Semantica's chunking methods are designed to avoid these failure modes.
     parsed = parser.parse("annual_report.pdf")
 
     splitter = TextSplitter(method="structural")
-    chunks   = splitter.split_document(parsed)
+    chunks   = splitter.split_documents([parsed])
 
     for chunk in chunks:
         print(f"[h{chunk.metadata['heading_level']}] {chunk.metadata['section_title']}")
@@ -258,7 +258,7 @@ splitter = TextSplitter(
         code_units=["function", "class"],   # "function" | "class" | "method" | "block"
         chunk_overlap=0,                     # code units are self-contained
     )
-    chunks = splitter.split_document(parsed)
+    chunks = splitter.split_documents([parsed])
 
     for chunk in chunks:
         print(f"{chunk.metadata['unit_type']}: {chunk.metadata['unit_name']}")
@@ -266,7 +266,7 @@ splitter = TextSplitter(
     ```
 
     **Key behaviours:**
-    - Requires a `ParsedDocument` from `CodeParser` — use `split_document()`
+    - Requires a `ParsedDocument` from `CodeParser` — use `split_documents([parsed])`
     - `chunk_overlap=0` recommended — functions and classes are logically self-contained
     - If a class is too large, it is split at method boundaries automatically
     - Supported languages: Python, JavaScript, TypeScript, Java, Go, Rust, C, C++, C#, Ruby, PHP, Swift
@@ -284,7 +284,7 @@ splitter = TextSplitter(
     parsed = parser.parse("annual_report.pdf")
 
     splitter = TextSplitter(method="structural")
-    chunks   = splitter.split_document(parsed)
+    chunks   = splitter.split_documents([parsed])
 
     for chunk in chunks:
         level = chunk.metadata['heading_level']

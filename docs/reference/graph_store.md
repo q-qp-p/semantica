@@ -48,13 +48,12 @@ icon: "server"
     ```python
     store.create_index(label="Person",       property="name")
     store.create_index(label="Organization", property="name")
-    store.create_constraint(label="Organization", property="id", constraint_type="unique")
     ```
   </Step>
-  <Step title="Bulk-load nodes and edges">
+  <Step title="Load nodes and edges">
     ```python
-    store.add_nodes_bulk(entities,      batch_size=1000)
-    store.add_edges_bulk(relationships, batch_size=1000)
+    store.create_nodes(entities)
+    store.add_edges(relationships)
     ```
   </Step>
   <Step title="Query the graph">
@@ -171,8 +170,8 @@ store.add_edge(
 )
 
 # Bulk operations — use for large datasets
-store.add_nodes_bulk(entities,      batch_size=1000)
-store.add_edges_bulk(relationships, batch_size=1000)
+store.create_nodes(entities)
+store.add_edges(relationships)
 
 # Delete
 store.delete_node("node_id")
@@ -266,13 +265,6 @@ all_paths = analytics.all_paths("alice", "charlie", max_hops=4)
 # Index for fast label lookups
 store.create_index(label="Person", property="name")
 
-# Uniqueness constraint
-store.create_constraint(
-    label="Organization",
-    property="id",
-    constraint_type="unique",
-)
-
 # Inspect current schema
 schema = store.get_schema()
 print(schema["labels"])
@@ -291,7 +283,7 @@ print(schema["constraints"])
 </Warning>
 
 <Tip>
-  **Use `add_nodes_bulk()` and `add_edges_bulk()` for large datasets.** Individual `add_node()` calls issue one network round-trip each. Bulk operations batch thousands of writes into a single transaction — 10–100× faster for initial loads.
+  **Use `create_nodes()` and `add_edges()` for loading multiple nodes and edges.** Individual `add_node()` calls issue one network round-trip each. Loading in bulk is significantly faster for initial graph population.
 </Tip>
 
 <Warning>

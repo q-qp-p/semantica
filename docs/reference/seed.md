@@ -15,8 +15,8 @@ icon: "database"
   <Card title="SeedDataSource" icon="file-code">
     Typed source definition supporting CSV, JSON, SQL, API, and RDF with format-specific config.
   </Card>
-  <Card title="populate() & inject()" icon="circle-plus">
-    Inject named built-in datasets (companies, countries, currencies) or custom seed files into an existing graph.
+  <Card title="Foundation Graph" icon="circle-plus">
+    Build a foundation graph from all registered sources in one pass, ready to merge with extracted data.
   </Card>
   <Card title="Merge Strategies" icon="arrows-merge">
     `seed_first`, `extracted_first`, and `smart_merge` with property-level conflict detection.
@@ -97,7 +97,7 @@ icon: "database"
         }
     )
 
-    manager.register_source_object(csv_source)
+    manager.register_source("employees", "csv", csv_source.path, config=csv_source.config)
     ```
 
     Best for: employee rosters, product lists, reference tables.
@@ -169,9 +169,8 @@ icon: "database"
 | `validate_quality(seed_data)` | Check schema compliance, required fields, and duplicates |
 | `integrate_with_extracted(seed, extracted, strategy)` | Merge seed and extracted graphs |
 | `export_seed_data(path, format)` | Export seed graph to RDF (`turtle`, `json-ld`), JSON, or CSV |
-| `populate(kg, dataset, count)` | Inject a named built-in dataset into an existing graph |
-| `inject(kg)` | Merge all registered sources into `kg` without duplicating existing entities |
-| `load_from_file(path)` | Load seed nodes from JSON, CSV, or RDF file into the manager |
+| `load_from_csv(path)` | Load seed records from a CSV file |
+| `load_from_json(path)` | Load seed records from a JSON file |
 | `list_sources()` | List all registered source names and their formats |
 | `get_version(name)` | Get the current version metadata for a named source |
 
@@ -221,18 +220,18 @@ icon: "database"
 
 ## Built-in Datasets
 
-Inject canonical reference data without loading external files:
+Register built-in reference datasets as named sources and load them into your foundation graph:
 
 ```python
 from semantica.seed import SeedDataManager
-from semantica.kg import GraphBuilder
 
-kg      = GraphBuilder().build(entities=entities, relationships=relationships)
 manager = SeedDataManager()
 
-# Inject a named built-in dataset
-manager.populate(kg, dataset="companies", count=100)
-manager.populate(kg, dataset="countries")
+# Register built-in reference sources by format and path
+manager.register_source("countries",  "csv",  "data/iso_countries.csv")
+manager.register_source("currencies", "json", "data/iso_currencies.json")
+
+foundation_kg = manager.create_foundation_graph()
 ```
 
 | Dataset | Content |
@@ -304,14 +303,6 @@ print(f"Version: {version.version_id}")
 print(f"Hash:    {version.checksum}")
 print(f"Records: {version.record_count}")
 print(f"Updated: {version.last_modified}")
-
-# Compare versions to detect changes
-old_version = manager.get_version("taxonomy", tag="previous")
-if version.checksum != old_version.checksum:
-    diff = manager.diff_versions("taxonomy", old_version.version_id, version.version_id)
-    print(f"Added:   {diff.added_count} records")
-    print(f"Removed: {diff.removed_count} records")
-    print(f"Changed: {diff.modified_count} records")
 ```
 
 ## YAML Configuration
@@ -368,7 +359,7 @@ export SEMANTICA_SEED_MERGE_STRATEGY=seed_first
 </Tip>
 
 <Tip>
-  **Track seed versions to detect drift.** Use `manager.get_version()` and `manager.diff_versions()` to detect when reference data changes between pipeline runs. If a taxonomy file changes, downstream entity normalisation and deduplication thresholds may need re-tuning — don't treat seed data as static.
+  **Track seed versions to detect drift.** Use `manager.get_version()` to check the checksum and record count for each registered source between pipeline runs. If a taxonomy file changes, downstream entity normalisation and deduplication thresholds may need re-tuning — don't treat seed data as static.
 </Tip>
 
 <Tip>

@@ -78,39 +78,14 @@ Reasoning turns sparse explicit knowledge into a dense, coherent, contradiction-
     ))
 
     # Run inference — always call explicitly after adding facts/rules
-    result = reasoner.infer()
+    result = reasoner.forward_chain()
     for inference in result.derived_facts:
         print(f"{inference.subject} {inference.predicate} {inference.obj}")
         print(f"  Derived via: {inference.explanation}")
     ```
 
-    ### Built-In Rule Templates
-
-    No manual rule authoring required for the three most common patterns:
-
-    ```python
-    engine = Reasoner()
-
-    # Transitive closure: A→B, B→C ⟹ A→C
-    engine.apply_transitivity("located_in")
-
-    # Symmetry: A knows B ⟹ B knows A
-    engine.apply_symmetry("knows")
-
-    # Inverse: A parent_of B ⟹ B child_of A
-    engine.apply_inverse("parent_of", "child_of")
-
-    result = engine.infer()
-    ```
-
-    | Template | Parameters | Description |
-    | -------- | ---------- | ----------- |
-    | `apply_transitivity(predicate)` | `predicate: str` | Adds A→C rule for all A→B, B→C chains |
-    | `apply_symmetry(predicate)` | `predicate: str` | Adds B→A rule for every A→B fact |
-    | `apply_inverse(predicate, inverse)` | `predicate, inverse: str` | Adds inverse direction for every fact |
-
     <Warning>
-      Always call `reasoner.infer()` after adding facts and rules. Adding them updates internal state but does **not** trigger inference automatically.
+      Always call `reasoner.forward_chain()` after adding facts and rules. Adding them updates internal state but does **not** trigger inference automatically.
     </Warning>
   </Tab>
 
@@ -120,7 +95,7 @@ Reasoning turns sparse explicit knowledge into a dense, coherent, contradiction-
     ```python
     from semantica.reasoning import GraphReasoner
 
-    graph_reasoner = GraphReasoner(kg)
+    graph_reasoner = GraphReasoner()
 
     # Define a transitive ancestor rule
     graph_reasoner.add_rule({
@@ -131,7 +106,7 @@ Reasoning turns sparse explicit knowledge into a dense, coherent, contradiction-
         "then": {"subject": "?a", "predicate": "ancestor_of", "object": "?c"}
     })
 
-    inferences = graph_reasoner.infer(kg)
+    inferences = graph_reasoner.reason(graph, query="")
     for inf in inferences:
         print(f"{inf['subject']} {inf['predicate']} {inf['object']}")
     ```
@@ -352,12 +327,18 @@ Different engines cover different expressivity levels — compose them for riche
 <Steps>
   <Step title="Forward-chain structural rules with Reasoner">
     ```python
-    from semantica.reasoning import Reasoner
+    from semantica.reasoning import Reasoner, Rule, Fact, RuleType
 
     engine = Reasoner()
-    engine.apply_transitivity("located_in")
-    engine.apply_symmetry("colleague_of")
-    structural_result = engine.infer()
+    engine.add_rule(Rule(
+        rule_type=RuleType.FORWARD_CHAIN,
+        conditions=[
+            {"subject": "?x", "predicate": "located_in", "object": "?y"},
+            {"subject": "?y", "predicate": "located_in", "object": "?z"}
+        ],
+        conclusion={"subject": "?x", "predicate": "located_in", "object": "?z"}
+    ))
+    structural_result = engine.forward_chain()
     ```
   </Step>
   <Step title="Pass derived facts to DatalogReasoner for recursive closure">
@@ -400,7 +381,7 @@ Different engines cover different expressivity levels — compose them for riche
 ## Tips and Common Pitfalls
 
 <Warning>
-  **Always call `reasoner.infer()` after adding facts and rules.** Adding facts and rules updates internal state but doesn't trigger inference automatically. Inference is a separate, explicit step.
+  **Always call `reasoner.forward_chain()` after adding facts and rules.** Adding facts and rules updates internal state but doesn't trigger inference automatically. Inference is a separate, explicit step.
 </Warning>
 
 <Tip>

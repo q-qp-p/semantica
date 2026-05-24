@@ -28,8 +28,8 @@ icon: "clock-rotate-left"
   <Card title="ChangeLogEntry" icon="list-check">
     Structured record of every change: author, timestamp, checksum, and change list.
   </Card>
-  <Card title="Compliance Export" icon="file-shield">
-    Full audit trail as CSV or JSON for regulatory review and subject-access requests.
+  <Card title="Version History" icon="file-shield">
+    Full tamper-evident version history via `list_versions()` and `diff()` for regulatory review.
   </Card>
 </CardGroup>
 
@@ -77,12 +77,6 @@ icon: "clock-rotate-left"
         print(f"  [{change.type}] {change.element}: {change.description}")
     ```
   </Step>
-  <Step title="Rollback if needed">
-    ```python
-    # Safe mode (default) — fails with a clear error rather than dropping nodes
-    manager.rollback(target_version="v1.0", allow_data_loss=False)
-    ```
-  </Step>
 </Steps>
 
 ## TemporalVersionManager
@@ -96,7 +90,7 @@ Version control for knowledge graphs — snapshot, diff, and rollback.
 | `storage_path` | `str` | `None` | Path to SQLite database; uses in-memory if omitted |
 | `storage` | `VersionStorage` | `None` | Explicit storage backend instance — overrides `storage_path` |
 
-### List, Retrieve, and Rollback
+### List and Retrieve
 
 ```python
 # List all versions
@@ -106,14 +100,7 @@ for v in versions:
 
 # Retrieve a specific version
 kg_v1 = manager.get_version("v1.0")
-
-# Rollback to a previous version
-manager.rollback(target_version="v1.0", allow_data_loss=False)
 ```
-
-<Warning>
-  `rollback(allow_data_loss=False)` is the safe default — it fails with a clear error if nodes were added after the target snapshot. Set `allow_data_loss=True` only when you explicitly intend to discard those changes.
-</Warning>
 
 ## Diff Analysis
 
@@ -236,9 +223,8 @@ if not is_valid:
 Every version snapshot includes a structured `ChangeLogEntry` that records the full context of a change:
 
 ```python
-from semantica.change_management import ChangeLogEntry
-
-entry: ChangeLogEntry = manager.get_log_entry(snapshot_id)
+# Retrieve a version entry
+entry = manager.get_version("v1.0")
 
 print(entry.version)      # "v1.0"
 print(entry.author)       # "user@example.com"
@@ -269,58 +255,35 @@ class ChangeLogEntry:
 
 </Accordion>
 
-## Compliance and Audit Export
+## Compliance and Version History
 
-All changes are preserved in a tamper-evident audit trail. Export for regulatory review:
-
-<CodeGroup>
-
-```python CSV export
-# Full audit trail
-manager.export_audit_trail("audit.csv", format="csv")
-
-# Scoped to a time range — SOX quarterly review
-from datetime import datetime
-
-trail = manager.get_audit_trail(
-    from_date=datetime(2026, 1, 1),
-    to_date=datetime(2026, 3, 31),
-)
-manager.export_audit_trail("q1_audit.csv", trail=trail, format="csv")
-```
-
-```python JSON export
-# Full audit trail
-manager.export_audit_trail("audit.json", format="json")
-
-# Scoped to a specific entity — HIPAA subject-access request
-trail = manager.get_audit_trail(entity_id="patient_001")
-manager.export_audit_trail("patient_001_audit.json", trail=trail, format="json")
-```
-
-</CodeGroup>
-
-You can also iterate the trail directly:
+All version snapshots form a tamper-evident audit trail. Use `list_versions()` and `diff()` to reconstruct and review changes for regulatory purposes:
 
 ```python
-trail = manager.get_audit_trail(entity_id="patient_001")
-for entry in trail:
-    print(f"{entry.timestamp.isoformat()} | {entry.author} | {entry.action} | {entry.description}")
+from semantica.change_management import TemporalVersionManager
+
+manager = TemporalVersionManager(storage_path="versions.db")
+
+# Enumerate the full version history
+for entry in manager.list_versions():
+    print(f"{entry.created_at.isoformat()} | {entry.author} | {entry.version} | {entry.message}")
+
+# Diff any two snapshots for a change report
+diff = manager.diff("v1.0", "v2.0")
+print(f"Added: {len(diff.added_nodes)} | Removed: {len(diff.removed_nodes)} | Modified: {len(diff.modified_nodes)}")
+for change in diff.changes:
+    print(f"  [{change.type}] {change.element}: {change.description}")
 ```
 
-### Audit Fields
+Use `verify_checksum()` before any compliance export to confirm graph integrity:
 
-| Field | Description |
-| ----- | ----------- |
-| `timestamp` | UTC ISO 8601 datetime |
-| `entity_id` | ID of the affected entity or relationship |
-| `author` | User or process that made the change |
-| `action` | `CREATE` / `UPDATE` / `DELETE` / `MERGE` / `ROLLBACK` |
-| `property` | Property name that changed (UPDATE rows only) |
-| `old_value` | Previous value (UPDATE and DELETE rows) |
-| `new_value` | New value (CREATE and UPDATE rows) |
-| `snapshot_id` | ID of the containing snapshot |
-| `checksum` | SHA-256 of the entity state after the change |
+```python
+from semantica.change_management import verify_checksum
+
+is_valid = verify_checksum(kg, expected_checksum=entry.checksum)
+if not is_valid:
+    raise RuntimeError("Graph has been modified since the snapshot was taken")
+```
 
 ### Compliance Coverage
 
@@ -354,11 +317,7 @@ for entry in trail:
 </Tip>
 
 <Tip>
-  **Export audit trails before compliance reviews.** `export_audit_trail("audit.csv", format="csv")` produces a complete tamper-evident record in one call. Schedule this export before quarterly reviews (SOX), regulatory inspections (FDA 21 CFR Part 11), or subject-access requests (GDPR).
-</Tip>
-
-<Tip>
-  **Use `get_audit_trail(from_date=..., to_date=...)` for scoped reviews.** Exporting the full audit trail for a multi-year graph can produce millions of rows. Scope to a time window or entity ID for faster, focused reports.
+  **Use `list_versions()` and `diff()` for compliance reviews.** `manager.list_versions()` enumerates the full version history and `manager.diff(v1, v2)` produces a machine-readable change report. Run `verify_checksum()` first to confirm the graph hasn't been modified since the snapshot was taken.
 </Tip>
 
 <CardGroup cols={2}>

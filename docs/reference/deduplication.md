@@ -176,38 +176,33 @@ print(f"Merged to: {len(merged_entities)} canonical entities")
 | `keep_first` | Keep the first entity in each group | Source order is meaningful (most authoritative first) |
 | `keep_last` | Keep the most recently seen entity | Most recent source is most accurate |
 | `keep_most_complete` | Keep the entity with the most non-null properties | Default — maximizes data richness |
-| `union` | Merge all properties; combine non-conflicting fields | You want every known alias, tag, and label |
-| `voting` | Most common property value wins | Multiple semi-reliable sources |
+| `keep_highest_confidence` | Keep the entity with the highest confidence score | Extraction pipelines produce confidence scores |
+| `merge_all` | Merge all properties; combine non-conflicting fields | You want every known alias, tag, and label |
 
 ### Per-Property Merge Rules
 
+Use `MergeStrategyManager` to apply different `MergeStrategy` values per property:
+
 ```python
-from semantica.deduplication import EntityMerger, PropertyMergeRule
+from semantica.deduplication import MergeStrategyManager, MergeStrategy
 
-merger = EntityMerger(
-    property_rules={
-        "name":        PropertyMergeRule.KEEP_FIRST,
-        "aliases":     PropertyMergeRule.UNION,
-        "description": PropertyMergeRule.KEEP_LONGEST,
-        "confidence":  PropertyMergeRule.MAX,
-        "created_at":  PropertyMergeRule.KEEP_FIRST,
-        "updated_at":  PropertyMergeRule.KEEP_LAST,
-    }
-)
+manager = MergeStrategyManager()
+manager.add_property_rule("name",       MergeStrategy.KEEP_FIRST)
+manager.add_property_rule("aliases",    MergeStrategy.MERGE_ALL)
+manager.add_property_rule("confidence", MergeStrategy.KEEP_HIGHEST_CONFIDENCE)
+manager.add_property_rule("created_at", MergeStrategy.KEEP_FIRST)
+manager.add_property_rule("updated_at", MergeStrategy.KEEP_LAST)
 
-merged_entities = merger.merge_duplicates(entities, preserve_provenance=True)
+merged_entity = manager.merge_entities(duplicate_group)
 ```
 
-| Rule | Behaviour |
-| ---- | --------- |
+| Strategy | Behaviour |
+| -------- | --------- |
 | `KEEP_FIRST` | Value from the first entity in the group |
 | `KEEP_LAST` | Value from the last entity |
-| `KEEP_LONGEST` | Longest non-null string value |
-| `KEEP_MOST_COMPLETE` | Entity with the most non-null fields (default fallback) |
-| `UNION` | Combine all unique values into a list |
-| `MAX` | Numerically largest value |
-| `MIN` | Numerically smallest value |
-| `VOTING` | Most frequently occurring value |
+| `KEEP_MOST_COMPLETE` | Entity with the most non-null fields |
+| `KEEP_HIGHEST_CONFIDENCE` | Entity with the highest confidence score |
+| `MERGE_ALL` | Combine all properties from every entity in the group |
 
 ## SimilarityCalculator
 
@@ -278,19 +273,18 @@ print(f"Avg separation:   {result.quality.avg_separation:.3f}")
 Define complex, reusable merge configurations once and apply them across multiple operations:
 
 ```python
-from semantica.deduplication import MergeStrategyManager, PropertyMergeRule
+from semantica.deduplication import MergeStrategyManager, MergeStrategy
 
 manager = MergeStrategyManager()
-manager.add_rule("name",        PropertyMergeRule.KEEP_FIRST)
-manager.add_rule("aliases",     PropertyMergeRule.UNION)
-manager.add_rule("description", PropertyMergeRule.KEEP_LONGEST)
-manager.add_rule("confidence",  PropertyMergeRule.MAX)
-manager.add_rule("sources",     PropertyMergeRule.UNION)
-manager.add_rule("created_at",  PropertyMergeRule.KEEP_FIRST)
-manager.add_rule("updated_at",  PropertyMergeRule.KEEP_LAST)
-manager.set_default_rule(PropertyMergeRule.KEEP_MOST_COMPLETE)
+manager.add_property_rule("name",        MergeStrategy.KEEP_FIRST)
+manager.add_property_rule("aliases",     MergeStrategy.MERGE_ALL)
+manager.add_property_rule("description", MergeStrategy.KEEP_MOST_COMPLETE)
+manager.add_property_rule("confidence",  MergeStrategy.KEEP_HIGHEST_CONFIDENCE)
+manager.add_property_rule("sources",     MergeStrategy.MERGE_ALL)
+manager.add_property_rule("created_at",  MergeStrategy.KEEP_FIRST)
+manager.add_property_rule("updated_at",  MergeStrategy.KEEP_LAST)
 
-merged_entity = manager.merge(duplicate_group)
+merged_entity = manager.merge_entities(duplicate_group)
 ```
 
 ## Blocking Strategies
@@ -379,13 +373,12 @@ class ClusterQuality:
   </Step>
   <Step title="Configure property-level merge rules">
     ```python
-    from semantica.deduplication import MergeStrategyManager, PropertyMergeRule
+    from semantica.deduplication import MergeStrategyManager, MergeStrategy
 
     manager = MergeStrategyManager()
-    manager.add_rule("name",        PropertyMergeRule.KEEP_FIRST)
-    manager.add_rule("aliases",     PropertyMergeRule.UNION)
-    manager.add_rule("description", PropertyMergeRule.KEEP_LONGEST)
-    manager.set_default_rule(PropertyMergeRule.KEEP_MOST_COMPLETE)
+    manager.add_property_rule("name",        MergeStrategy.KEEP_FIRST)
+    manager.add_property_rule("aliases",     MergeStrategy.MERGE_ALL)
+    manager.add_property_rule("description", MergeStrategy.KEEP_MOST_COMPLETE)
     ```
   </Step>
   <Step title="Merge and inspect results">

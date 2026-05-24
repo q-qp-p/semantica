@@ -49,10 +49,10 @@ Semantica's conflict detection makes disagreements explicit and actionable:
     from semantica.conflicts import SourceTracker
 
     tracker = SourceTracker()
-    tracker.set_credibility("sec_filings",   0.95)
-    tracker.set_credibility("pubmed",        0.92)
-    tracker.set_credibility("wikipedia",     0.80)
-    tracker.set_credibility("news_articles", 0.65)
+    tracker.set_source_credibility("sec_filings",   0.95)
+    tracker.set_source_credibility("pubmed",        0.92)
+    tracker.set_source_credibility("wikipedia",     0.80)
+    tracker.set_source_credibility("news_articles", 0.65)
     ```
   </Step>
   <Step title="Detect conflicts after building the graph">
@@ -73,10 +73,11 @@ Semantica's conflict detection makes disagreements explicit and actionable:
     from semantica.conflicts import ConflictAnalyzer
 
     analyzer    = ConflictAnalyzer()
-    by_severity = analyzer.group_by_severity(conflicts)
-    print(f"Critical: {len(by_severity['critical'])}")
-    print(f"High:     {len(by_severity['high'])}")
-    print(f"Low:      {len(by_severity['low'])}")
+    analysis    = analyzer.analyze_conflicts(conflicts)
+    by_severity = analysis["by_severity"]
+    print(f"Critical: {len(by_severity.get('critical', []))}")
+    print(f"High:     {len(by_severity.get('high', []))}")
+    print(f"Low:      {len(by_severity.get('low', []))}")
     ```
   </Step>
   <Step title="Auto-resolve low-severity, escalate critical">
@@ -94,7 +95,7 @@ Semantica's conflict detection makes disagreements explicit and actionable:
     # Generate investigation guides for critical conflicts
     generator = InvestigationGuideGenerator()
     for conflict in by_severity["critical"]:
-        guide = generator.generate(conflict)
+        guide = generator.generate_guide(conflict)
         print(f"\n{guide.title}")
         for step in guide.steps:
             print(f"  [{step.order}] ({step.priority.upper()}) {step.description}")
@@ -161,9 +162,9 @@ for result in results:
     from semantica.conflicts import ConflictResolver, SourceTracker, ResolutionStrategy
 
     tracker = SourceTracker()
-    tracker.set_credibility("sec_filings",   0.92)
-    tracker.set_credibility("wikipedia",     0.80)
-    tracker.set_credibility("news_articles", 0.65)
+    tracker.set_source_credibility("sec_filings",   0.92)
+    tracker.set_source_credibility("wikipedia",     0.80)
+    tracker.set_source_credibility("news_articles", 0.65)
 
     resolver = ConflictResolver(source_tracker=tracker)
     results  = resolver.resolve_conflicts(
@@ -201,7 +202,7 @@ for result in results:
     generator = InvestigationGuideGenerator()
 
     for conflict in conflicts:
-        guide = generator.generate(conflict)
+        guide = generator.generate_guide(conflict)
         print(f"{guide.title}")
         for step in guide.steps:
             print(f"  [{step.order}] {step.description}")
@@ -238,8 +239,8 @@ from semantica.conflicts import SourceTracker
 from datetime import datetime
 
 tracker = SourceTracker()
-tracker.set_credibility("sec_10k",   0.92)
-tracker.set_credibility("wikipedia", 0.80)
+tracker.set_source_credibility("sec_10k",   0.92)
+tracker.set_source_credibility("wikipedia", 0.80)
 
 tracker.track_property_source(
     entity_id="apple_inc",
@@ -267,19 +268,20 @@ from semantica.conflicts import ConflictAnalyzer
 
 analyzer = ConflictAnalyzer()
 
-patterns    = analyzer.identify_patterns(conflicts)
-by_severity = analyzer.group_by_severity(conflicts)
-source_stats = analyzer.analyze_sources(conflicts)
-trends      = analyzer.analyze_trends(conflicts, time_window="30d")
+analysis     = analyzer.analyze_conflicts(conflicts)
+patterns     = analysis["patterns"]
+by_severity  = analysis["by_severity"]
+source_stats = analysis["by_source"]
+trends       = analyzer.analyze_trends(conflicts)
 
 print(f"Trend direction: {trends['direction']}")   # "increasing" | "stable" | "decreasing"
 print(f"Change:          {trends['change_pct']:.1f}%")
 ```
 
 **Key behaviours:**
-- `identify_patterns()` groups conflicts by attribute name and type — use it to find systemic data quality issues
-- `analyze_sources()` flags sources with disproportionate conflict rates — a signal that a source's pipeline needs review
-- `analyze_trends()` compares conflict counts across time windows — a rising trend means a data source is degrading
+- `analyze_conflicts()["patterns"]` groups conflicts by attribute name and type — use it to find systemic data quality issues
+- `analyze_conflicts()["by_source"]` flags sources with disproportionate conflict rates — a signal that a source's pipeline needs review
+- `analyze_trends()` compares conflict counts over time — a rising trend means a data source is degrading
 
 ## InvestigationGuideGenerator
 
@@ -289,7 +291,7 @@ Auto-generate human-readable investigation checklists for conflicts requiring ma
 from semantica.conflicts import InvestigationGuideGenerator
 
 generator = InvestigationGuideGenerator()
-guide     = generator.generate(conflict)
+guide     = generator.generate_guide(conflict)
 
 print(f"Title:   {guide.title}")
 print(f"Context: {guide.context}")
