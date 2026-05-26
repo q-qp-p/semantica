@@ -13,7 +13,10 @@ def test_root_help_shows_expected_groups(runner):
     result = runner.invoke(cli_module.main, ["--help"])
 
     assert result.exit_code == 0
-    assert "Semantica - Semantic Layer & Knowledge Engineering Framework" in result.output
+    assert (
+        "Semantica - Semantic Layer & Knowledge Engineering Framework"
+        in result.output
+    )
     assert "kg" in result.output
     assert "pipeline" in result.output
     assert "serve" in result.output
@@ -35,6 +38,29 @@ def test_kg_build_help_shows_source_and_config_flags(runner):
     assert "-s" in result.output
     assert "--config" in result.output
     assert "-c" in result.output
+
+
+def test_command_config_keeps_own_logging_without_global_override(runner, monkeypatch):
+    captured = {}
+
+    def fake_run_build(cli_ctx, sources):
+        captured["logging_level"] = cli_ctx.config.get("logging.level")
+        captured["sources"] = list(sources)
+
+    monkeypatch.setattr(cli_module, "_run_build", fake_run_build)
+
+    with runner.isolated_filesystem():
+        with open("cfg.yml", "w", encoding="utf-8") as handle:
+            handle.write("logging:\n  level: DEBUG\n")
+
+        result = runner.invoke(
+            cli_module.main,
+            ["kg", "build", "-s", "README.md", "-c", "cfg.yml"],
+        )
+
+    assert result.exit_code == 0
+    assert captured["sources"] == ["README.md"]
+    assert captured["logging_level"] == "DEBUG"
 
 
 @pytest.mark.parametrize(
@@ -127,6 +153,37 @@ def test_invalid_command_config_error_is_clean_and_click_safe(runner):
 
     assert result.exit_code != 0
     assert "Unsupported configuration file format" in result.output
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.parametrize(
+    "file_name, config_text, expected_error",
+    [
+        ("cfg.json", "{not-json", "Failed to parse configuration file"),
+        (
+            "cfg.yml",
+            "- item\n- item2\n",
+            "Configuration file must contain a mapping/object",
+        ),
+    ],
+)
+def test_command_config_parse_errors_are_clean_and_click_safe(
+    runner,
+    file_name,
+    config_text,
+    expected_error,
+):
+    with runner.isolated_filesystem():
+        with open(file_name, "w", encoding="utf-8") as handle:
+            handle.write(config_text)
+
+        result = runner.invoke(
+            cli_module.main,
+            ["kg", "build", "-s", "README.md", "-c", file_name],
+        )
+
+    assert result.exit_code != 0
+    assert expected_error in result.output
     assert "Traceback" not in result.output
 
 

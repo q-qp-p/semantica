@@ -5,10 +5,10 @@ This module provides the command-line interface for the Semantica framework,
 enabling users to interact with the framework via terminal commands.
 """
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence
 
 import yaml
 
@@ -34,6 +34,7 @@ class CLIContext:
     config_path: Optional[str]
     config: Config
     log_level: str
+    log_level_override: Optional[str] = None
     framework: Optional["Semantica"] = None
 
 
@@ -49,16 +50,13 @@ def _run_with_error_handling(action: Callable[[], None]) -> None:
         raise click.ClickException(f"Unexpected error: {exc}") from exc
 
 
-def _build_runtime_config(config_path: Optional[str], log_level: Optional[str]) -> Config:
-    """Resolve CLI config from file plus global flag overrides."""
-    config_manager = ConfigManager()
-
-    if config_path:
-        file_path = Path(config_path)
-        suffix = file_path.suffix.lower()
+def _load_config_data(file_path: Path) -> Dict[str, Any]:
+    """Load and validate raw YAML/JSON config data."""
+    suffix = file_path.suffix.lower()
+    try:
         if suffix in (".yaml", ".yml"):
             with file_path.open("r", encoding="utf-8") as handle:
-                config_data = yaml.safe_load(handle) or {}
+                config_data = yaml.safe_load(handle)
         elif suffix == ".json":
             with file_path.open("r", encoding="utf-8") as handle:
                 config_data = json.load(handle)
@@ -67,6 +65,28 @@ def _build_runtime_config(config_path: Optional[str], log_level: Optional[str]) 
                 "Unsupported configuration file format: "
                 f"{suffix}. Supported formats: .yaml, .yml, .json"
             )
+    except (json.JSONDecodeError, yaml.YAMLError, UnicodeDecodeError) as exc:
+        raise click.ClickException(
+            f"Failed to parse configuration file '{file_path}': {exc}"
+        ) from exc
+
+    if not isinstance(config_data, dict):
+        raise click.ClickException(
+            "Configuration file must contain a mapping/object at the root."
+        )
+
+    return config_data
+
+
+def _build_runtime_config(
+    config_path: Optional[str],
+    log_level: Optional[str],
+) -> Config:
+    """Resolve CLI config from file plus global flag overrides."""
+    config_manager = ConfigManager()
+
+    if config_path:
+        config_data = _load_config_data(Path(config_path))
     else:
         config_data = {}
 
@@ -101,10 +121,13 @@ def _run_build(cli_ctx: CLIContext, sources: Sequence[str]) -> None:
     processed = stats.get("sources_processed")
     if processed is not None:
         console.print(
-            f"[bold green]Success:[/bold green] Knowledge base build completed for {processed} source(s)."
+            "[bold green]Success:[/bold green] Knowledge base build completed "
+            f"for {processed} source(s)."
         )
     else:
-        console.print("[bold green]Success:[/bold green] Knowledge base build completed.")
+        console.print(
+            "[bold green]Success:[/bold green] Knowledge base build completed."
+        )
 
 
 def _run_build_command(
@@ -116,7 +139,9 @@ def _run_build_command(
     if command_config_path:
         command_ctx = CLIContext(
             config_path=command_config_path,
-            config=_build_runtime_config(command_config_path, cli_ctx.log_level),
+            config=_build_runtime_config(
+                command_config_path, cli_ctx.log_level_override
+            ),
             log_level=cli_ctx.log_level,
         )
         _run_build(command_ctx, source)
@@ -135,7 +160,10 @@ def _run_build_command(
 )
 @click.option(
     "--log-level",
-    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], case_sensitive=False),
+    type=click.Choice(
+        ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        case_sensitive=False,
+    ),
     default=None,
     help="Override logging level for this CLI invocation.",
 )
@@ -145,10 +173,12 @@ def main(ctx: click.Context, config_path: Optional[str], log_level: Optional[str
     try:
         config = _build_runtime_config(config_path=config_path, log_level=log_level)
         setup_logging(config=config.get("logging", {}))
+        effective_log_level = config.get("logging.level", "INFO")
         ctx.obj = CLIContext(
             config_path=config_path,
             config=config,
-            log_level=config.get("logging.level", "INFO"),
+            log_level=effective_log_level,
+            log_level_override=log_level.upper() if log_level else None,
         )
     except click.ClickException:
         raise
@@ -194,10 +224,12 @@ def config_group(ctx: click.Context) -> None:
 @click.pass_obj
 def info(cli_ctx: CLIContext):
     """Display information about Semantica."""
+
     def _action() -> None:
         console.print(f"[bold blue]Semantica Framework[/bold blue] v{__version__}")
         console.print(
-            "A comprehensive Python framework for transforming unstructured data into semantic layers."
+            "A comprehensive Python framework for transforming unstructured data "
+            "into semantic layers."
         )
 
         table = Table(title="Framework Components")
@@ -218,10 +250,22 @@ def info(cli_ctx: CLIContext):
 
 @kg.command("build")
 @click.option("--source", "-s", multiple=True, help="Data sources to process.")
-@click.option("-c", "--config", "command_config_path", type=click.Path(exists=True, dir_okay=False, resolve_path=True, path_type=str), default=None, help="Path to YAML/JSON config file.")
+@click.option(
+    "-c",
+    "--config",
+    "command_config_path",
+    type=click.Path(exists=True, dir_okay=False, resolve_path=True, path_type=str),
+    default=None,
+    help="Path to YAML/JSON config file.",
+)
 @click.pass_obj
-def kg_build(cli_ctx: CLIContext, source: Sequence[str], command_config_path: Optional[str]):
+def kg_build(
+    cli_ctx: CLIContext,
+    source: Sequence[str],
+    command_config_path: Optional[str],
+):
     """Build a knowledge base from sources."""
+
     def _action() -> None:
         _run_build_command(cli_ctx, source, command_config_path)
 
@@ -230,10 +274,22 @@ def kg_build(cli_ctx: CLIContext, source: Sequence[str], command_config_path: Op
 
 @main.command("build", hidden=True)
 @click.option("--source", "-s", multiple=True, help="Data sources to process.")
-@click.option("-c", "--config", "command_config_path", type=click.Path(exists=True, dir_okay=False, resolve_path=True, path_type=str), default=None, help="Path to YAML/JSON config file.")
+@click.option(
+    "-c",
+    "--config",
+    "command_config_path",
+    type=click.Path(exists=True, dir_okay=False, resolve_path=True, path_type=str),
+    default=None,
+    help="Path to YAML/JSON config file.",
+)
 @click.pass_obj
-def build_alias(cli_ctx: CLIContext, source: Sequence[str], command_config_path: Optional[str]):
+def build_alias(
+    cli_ctx: CLIContext,
+    source: Sequence[str],
+    command_config_path: Optional[str],
+):
     """Backward-compatible alias for 'kg build'."""
+
     def _action() -> None:
         _run_build_command(cli_ctx, source, command_config_path)
 
