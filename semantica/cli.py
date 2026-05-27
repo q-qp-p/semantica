@@ -38,6 +38,20 @@ class CLIContext:
     framework: Optional["Semantica"] = None
 
 
+def _require_ctx(cli_ctx: Optional[CLIContext]) -> CLIContext:
+    """Guard against uninitialized CLI context.
+
+    Under normal Click operation (standalone_mode=True) ctx.obj is always set
+    before a subcommand runs. This guard protects embedded/library usage where
+    standalone_mode=False might leave ctx.obj as None.
+    """
+    if cli_ctx is None:
+        raise click.ClickException(
+            "CLI context is uninitialized — this is a bug, please report it."
+        )
+    return cli_ctx
+
+
 def _run_with_error_handling(action: Callable[[], None]) -> None:
     """Run a CLI action with consistent user-facing error formatting."""
     try:
@@ -46,7 +60,7 @@ def _run_with_error_handling(action: Callable[[], None]) -> None:
         raise
     except SemanticaError as exc:
         raise click.ClickException(str(exc)) from exc
-    except Exception as exc:  # pragma: no cover - fallback guard
+    except Exception as exc:
         raise click.ClickException(f"Unexpected error: {exc}") from exc
 
 
@@ -120,7 +134,21 @@ def _get_framework(cli_ctx: CLIContext) -> "Semantica":
 
 
 def _run_build(cli_ctx: CLIContext, sources: Sequence[str]) -> None:
-    """Thin wrapper around existing build orchestration flow."""
+    """Thin wrapper around existing build orchestration flow.
+
+    build_knowledge_base is expected to return a dict of the form::
+
+        {
+            "statistics": {
+                "sources_processed": <int>,
+                ...
+            },
+            ...
+        }
+
+    Both the top-level dict and the "statistics" key are optional; the
+    function degrades gracefully when either is absent or None.
+    """
     if not sources:
         raise click.UsageError(
             "At least one source is required. Use --source/-s one or more times."
@@ -148,14 +176,25 @@ def _run_build_command(
     source: Sequence[str],
     command_config_path: Optional[str],
 ) -> None:
-    """Execute build command path with optional command-level config override."""
+    """Execute build command path with optional command-level config override.
+
+    When a per-command config file is supplied, the logging configuration from
+    that file is re-applied (setup_logging clears existing handlers before
+    adding new ones, so there is no handler accumulation risk).
+    """
     if command_config_path:
+        cmd_config = _build_runtime_config(
+            command_config_path, cli_ctx.log_level_override
+        )
+        # Re-apply logging so the command-level logging section takes effect.
+        setup_logging(config=cmd_config.get("logging", {}))
         command_ctx = CLIContext(
             config_path=command_config_path,
-            config=_build_runtime_config(
-                command_config_path, cli_ctx.log_level_override
-            ),
+            config=cmd_config,
             log_level=cli_ctx.log_level,
+            # Preserve the global --log-level override so nested config
+            # lookups further down the call chain respect it.
+            log_level_override=cli_ctx.log_level_override,
         )
         _run_build(command_ctx, source)
     else:
@@ -217,10 +256,17 @@ def pipeline(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
-@main.group(invoke_without_command=True)
+@main.group(name="services", invoke_without_command=True)
 @click.pass_context
-def serve(ctx: click.Context) -> None:
-    """Service command group (foundation placeholder)."""
+def services(ctx: click.Context) -> None:
+    """Service management commands (server, explorer, mcp — foundation placeholder).
+
+    Subcommands will follow the spec layout::
+
+        semantica services server  start|stop|status
+        semantica services explorer start|stop|status
+        semantica services mcp      start|stop|status
+    """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
@@ -237,6 +283,7 @@ def config_group(ctx: click.Context) -> None:
 @click.pass_obj
 def info(cli_ctx: CLIContext):
     """Display information about Semantica."""
+    cli_ctx = _require_ctx(cli_ctx)
 
     def _action() -> None:
         console.print(f"[bold blue]Semantica Framework[/bold blue] v{__version__}")
@@ -278,6 +325,7 @@ def kg_build(
     command_config_path: Optional[str],
 ):
     """Build a knowledge base from sources."""
+    cli_ctx = _require_ctx(cli_ctx)
 
     def _action() -> None:
         _run_build_command(cli_ctx, source, command_config_path)
@@ -302,6 +350,7 @@ def build_alias(
     command_config_path: Optional[str],
 ):
     """Backward-compatible alias for 'kg build'."""
+    cli_ctx = _require_ctx(cli_ctx)
 
     def _action() -> None:
         _run_build_command(cli_ctx, source, command_config_path)
