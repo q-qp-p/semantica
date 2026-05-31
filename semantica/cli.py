@@ -661,9 +661,9 @@ def ingest(
             _dry(cli_ctx, "ingest", json_out=_is_json(cli_ctx, local_json),
                  source=source, type=ingestor_type, format=fmt)
             return
-        kwargs: Dict[str, Any] = {"source": source, "batch_size": batch_size}
+        kwargs: Dict[str, Any] = {"batch_size": batch_size}
         if ingestor_type:
-            kwargs["ingestor_type"] = ingestor_type
+            kwargs["source_type"] = ingestor_type
         if fmt:
             kwargs["format"] = fmt
         if recursive:
@@ -674,7 +674,7 @@ def ingest(
             kwargs["output"] = output
         try:
             from .ingest import ingest as _ingest
-            result = _ingest(**kwargs)
+            result = _ingest(source, **kwargs)
         except ImportError as exc:
             raise click.ClickException(f"Ingest module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):

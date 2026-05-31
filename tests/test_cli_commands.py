@@ -272,11 +272,53 @@ class TestIngest:
         result = runner.invoke(main, ["ingest", "data.pdf", "--dry-run"])
         _ok(result, substr="Dry run")
 
+    def test_runtime_path_passes_source_positionally(self, runner, monkeypatch):
+        captured = {}
+
+        def fake_ingest_file(sources, **kwargs):
+            captured["sources"] = sources
+            captured["kwargs"] = kwargs
+            return [{"path": sources}]
+
+        monkeypatch.setattr("semantica.ingest.methods.ingest_file", fake_ingest_file)
+
+        result = runner.invoke(
+            main,
+            ["ingest", "README.md", "--type", "file", "--format", "csv", "--json"],
+        )
+
+        _ok(result)
+        data = _json_output(result)
+        assert data["files"] == [{"path": "README.md"}]
+        assert captured["sources"] == "README.md"
+        assert captured["kwargs"]["method"] == "file"
+        assert captured["kwargs"]["batch_size"] == 500
+        assert captured["kwargs"]["format"] == "csv"
+
+    def test_runtime_path_passes_source_positionally_with_auto_detection(self, runner, monkeypatch):
+        captured = {}
+
+        def fake_ingest_file(sources, **kwargs):
+            captured["sources"] = sources
+            captured["kwargs"] = kwargs
+            return [{"path": sources}]
+
+        monkeypatch.setattr("semantica.ingest.methods.ingest_file", fake_ingest_file)
+
+        result = runner.invoke(main, ["ingest", "README.md", "--json"])
+
+        _ok(result)
+        data = _json_output(result)
+        assert data["files"] == [{"path": "README.md"}]
+        assert captured["sources"] == "README.md"
+        assert captured["kwargs"]["method"] == "file"
+
     def test_import_error_is_clean(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "__import__", _import_side_effect, raising=False)
+        original_import = __import__
         with patch("builtins.__import__", side_effect=lambda n, *a, **k: (
             (_ for _ in ()).throw(ImportError(n))
-            if n.startswith("semantica.ingest") else __import__(n, *a, **k)
+            if n.startswith("semantica.ingest") else original_import(n, *a, **k)
         )):
             result = runner.invoke(main, ["ingest", "data.pdf"])
         assert result.exit_code != 0
