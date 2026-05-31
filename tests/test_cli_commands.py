@@ -544,6 +544,66 @@ class TestDeduplicate:
         data = _json_output(result)
         assert data["dry_run"] is True
 
+    def test_detect_runtime_path(self, runner, monkeypatch):
+        entities = [
+            {"id": "e1", "name": "Alice", "type": "Person"},
+            {"id": "e2", "name": "Alice", "type": "Person"},
+            {"id": "e3", "name": "Bob", "type": "Person"},
+        ]
+
+        class FakeStore:
+            def get_nodes(self, labels=None, properties=None, limit=100, **options):
+                return entities
+
+        monkeypatch.setattr("semantica.graph_store.methods._get_store", lambda: FakeStore())
+        monkeypatch.setattr("semantica.graph_store.methods.get_nodes", lambda **kwargs: entities)
+
+        result = runner.invoke(
+            main,
+            ["deduplicate", "--action", "detect", "--min-similarity", "0.1", "--json"],
+        )
+
+        _ok(result)
+        assert "Alice" in result.output
+        assert "Bob" not in result.output or "entities" in result.output
+
+    def test_merge_runtime_path(self, runner, monkeypatch):
+        entities = [
+            {"id": "e1", "name": "Alice", "type": "Person"},
+            {"id": "e2", "name": "Alice", "type": "Person"},
+        ]
+        captured = {}
+
+        class FakeStore:
+            def get_nodes(self, labels=None, properties=None, limit=100, **options):
+                return entities
+
+        monkeypatch.setattr("semantica.graph_store.methods._get_store", lambda: FakeStore())
+        monkeypatch.setattr("semantica.graph_store.methods.get_nodes", lambda **kwargs: entities)
+
+        def fake_merge(self, loaded_entities, **kwargs):
+            captured["entities"] = loaded_entities
+            captured["kwargs"] = kwargs
+            return [{"merged": True, "count": len(loaded_entities)}]
+
+        monkeypatch.setattr(
+            "semantica.deduplication.entity_merger.EntityMerger.merge_duplicates",
+            fake_merge,
+        )
+
+        result = runner.invoke(
+            main,
+            ["deduplicate", "--action", "merge", "--json"],
+        )
+
+        _ok(result)
+        data = _json_output(result)
+        assert data == [{"merged": True, "count": 2}]
+        assert captured["entities"] == entities
+        assert captured["kwargs"]["threshold"] == pytest.approx(0.7)
+        assert captured["kwargs"]["candidate_strategy"] == "hybrid_v2"
+        assert captured["kwargs"]["sort_by"] == "similarity_score"
+
     def test_global_dry_run_triggers_dry(self, runner):
         result = runner.invoke(main, ["--dry-run", "--json", "deduplicate"])
         _ok(result)

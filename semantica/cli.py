@@ -1038,19 +1038,64 @@ def deduplicate(
     """
     cli_ctx = _require_ctx(cli_ctx)
 
+    strategy_map = {
+        "blocking": "blocking_v2",
+        "semantic": "legacy",
+        "hybrid": "hybrid_v2",
+    }
+
+    def _load_entities() -> List[Dict[str, Any]]:
+        from .graph_store import get_nodes
+        from .graph_store.config import graph_store_config
+
+        graph_db = dict(cli_ctx.config.to_dict().get("graph_db", {}))
+        backend = cli_ctx.store_backend or graph_db.pop("backend", None)
+        previous_graph_config = graph_store_config.get_all()
+        graph_store_config.update(graph_db)
+        if backend:
+            graph_store_config.set("default_backend", backend)
+        try:
+            return get_nodes(limit=sys.maxsize)
+        finally:
+            graph_store_config.update(previous_graph_config)
+
     def _action() -> None:
         if _is_dry(cli_ctx, local_dry):
             _dry(cli_ctx, "deduplicate", json_out=_is_json(cli_ctx, local_json),
                  strategy=strategy, dedup_action=dedup_action)
             return
         try:
-            from .deduplication import detect_duplicates, merge_entities
+            from .deduplication import detect_duplicates
+            from .deduplication.entity_merger import EntityMerger
+
+            entities = _load_entities()
+            candidate_strategy = strategy_map.get(strategy, strategy)
+            detector_sort_by = "similarity_score" if sort_by == "similarity" else "confidence"
+            detection_kwargs: Dict[str, Any] = {
+                "candidate_strategy": candidate_strategy,
+                "sort_by": detector_sort_by,
+            }
             if dedup_action == "detect":
-                result = detect_duplicates(strategy=strategy, min_similarity=min_similarity)
+                result = detect_duplicates(
+                    entities,
+                    method="group",
+                    similarity_threshold=min_similarity,
+                    **detection_kwargs,
+                )
             elif dedup_action == "merge":
-                result = merge_entities(strategy=strategy, min_similarity=min_similarity)
+                merger = EntityMerger()
+                result = merger.merge_duplicates(
+                    entities,
+                    threshold=min_similarity,
+                    **detection_kwargs,
+                )
             else:
-                result = detect_duplicates(strategy=strategy, min_similarity=min_similarity)
+                result = detect_duplicates(
+                    entities,
+                    method="group",
+                    similarity_threshold=min_similarity,
+                    **detection_kwargs,
+                )
         except ImportError as exc:
             raise click.ClickException(f"Deduplication module not available: {exc}") from exc
         if output:
