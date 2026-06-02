@@ -158,7 +158,7 @@ def _setup_cli_logging(
         # Do not emit a warning: completion scripts and machine-readable
         # commands must keep stdout/stderr stable when the default log file is
         # unavailable. Explicitly configured log-file failures still raise.
-        _ = (quiet, json_output, exc)
+        del quiet, json_output, exc  # suppress unused-variable lint
 
 
 def _get_framework(cli_ctx: CLIContext) -> "Semantica":
@@ -446,6 +446,18 @@ def build_alias(
         _run_build_command(cli_ctx, source, command_config_path)
 
     _run_with_error_handling(_action)
+
+
+# ─── Graph store helper ──────────────────────────────────────────────────────
+
+
+def _get_graph_store(cli_ctx: CLIContext) -> Any:
+    """Return a GraphStore instance wired from the current CLIContext config."""
+    from .graph_store import GraphStore
+    cfg = cli_ctx.config.to_dict()
+    graph_db = dict(cfg.get("graph_db", {}))
+    backend = cli_ctx.store_backend or graph_db.pop("backend", "neo4j")
+    return GraphStore(backend=backend, **graph_db)
 
 
 # ─── Output helpers ──────────────────────────────────────────────────────────
@@ -832,7 +844,7 @@ def normalize(cli_ctx: CLIContext, input_text: str, mode: str, domain: str,
 
     def _action() -> None:
         src = Path(input_text)
-        text = src.read_text(encoding="utf-8") if src.exists() else input_text
+        text = src.read_text(encoding="utf-8") if src.is_file() else input_text
         try:
             from .normalize import normalize_text, normalize_date, normalize_entity
             if mode == "temporal":
@@ -910,19 +922,19 @@ def extract(
             raise click.ClickException(f"Extract module not available: {exc}") from exc
         json_out = _is_json(cli_ctx, local_json) or fmt == "json"
         if json_out:
-            payload = result if isinstance(result, dict) else {"result": str(result)}
+            text_out = json.dumps(
+                result if isinstance(result, dict) else {"result": str(result)},
+                default=str,
+            )
         elif fmt == "yaml":
-            payload = None
-            click.echo(yaml.dump(result, default_flow_style=False))
+            text_out = yaml.dump(result, default_flow_style=False)
         else:
-            payload = None
-            console.print(result)
-        if payload is not None:
-            if output:
-                Path(output).write_text(json.dumps(payload, default=str), encoding="utf-8")
-                _ok(cli_ctx, f"Wrote {output}")
-            else:
-                _jecho(payload)
+            text_out = str(result)
+        if output:
+            Path(output).write_text(text_out, encoding="utf-8")
+            _ok(cli_ctx, f"Wrote {output}")
+        else:
+            click.echo(text_out)
 
     _run_with_error_handling(_action)
 
@@ -1041,14 +1053,41 @@ def embed_index(cli_ctx: CLIContext, file_path: str, store: str,
 
     def _action() -> None:
         try:
+            import numpy as np
+            import pandas as pd
             from .vector_store import create_index
-            result = create_index(file_path, store=store, namespace=namespace)
         except ImportError as exc:
             raise click.ClickException(f"Vector store module not available: {exc}") from exc
-        if _is_json(cli_ctx, local_json):
-            _jecho(result if isinstance(result, dict) else {"status": "ok"})
+
+        fp = Path(file_path)
+        suffix = fp.suffix.lower()
+        if suffix == ".parquet":
+            df = pd.read_parquet(fp)
+        elif suffix in (".json", ".jsonl"):
+            df = pd.read_json(fp, lines=(suffix == ".jsonl"))
         else:
-            _ok(cli_ctx, f"Indexed {file_path} into {store}")
+            raise click.ClickException(
+                f"Unsupported embeddings file format '{suffix}'. Use .parquet, .json, or .jsonl"
+            )
+
+        vector_col = next(
+            (c for c in df.columns if isinstance(df[c].iloc[0] if len(df) else None, (list, np.ndarray))),
+            None,
+        ) if len(df) else None
+        if vector_col is None:
+            raise click.ClickException("No vector column found in embeddings file")
+
+        id_col = next(
+            (c for c in df.columns if c != vector_col and df[c].dtype == object), None
+        )
+        vectors = [np.array(v, dtype=np.float32) for v in df[vector_col]]
+        ids = list(df[id_col].astype(str)) if id_col else None
+
+        result = create_index(vectors, ids=ids, store=store, namespace=namespace)
+        if _is_json(cli_ctx, local_json):
+            _jecho(result if isinstance(result, dict) else {"status": "ok", "indexed": len(vectors)})
+        else:
+            _ok(cli_ctx, f"Indexed {len(vectors)} vectors from {file_path} into {store}")
 
     _run_with_error_handling(_action)
 
@@ -1132,13 +1171,25 @@ def deduplicate(
                     threshold=min_similarity,
                     **detection_kwargs,
                 )
-            else:
-                result = detect_duplicates(
+            else:  # report — pairwise pairs with similarity scores
+                pairs = detect_duplicates(
                     entities,
-                    method="group",
+                    method="pairwise",
                     similarity_threshold=min_similarity,
                     **detection_kwargs,
                 )
+                result = {
+                    "total_entities": len(entities),
+                    "duplicate_pairs": len(pairs),
+                    "pairs": [
+                        {
+                            "entity_1": getattr(p, "entity1_id", None),
+                            "entity_2": getattr(p, "entity2_id", None),
+                            "similarity": getattr(p, "similarity_score", None),
+                        }
+                        for p in pairs
+                    ],
+                }
         except ImportError as exc:
             raise click.ClickException(f"Deduplication module not available: {exc}") from exc
         if output:
@@ -1265,7 +1316,13 @@ def reason_query(cli_ctx: CLIContext, query_str: str, with_inference: bool,
 def reason_list(cli_ctx: CLIContext) -> None:
     """List available reasoning engines."""
     cli_ctx = _require_ctx(cli_ctx)
-    engines = ["deductive", "abductive", "rete", "forward-chain", "datalog", "sparql", "graph"]
+    _builtin: List[str] = ["deductive", "abductive", "rete", "forward-chain", "datalog", "sparql", "graph"]
+    try:
+        import semantica.reasoning as _reasoning_mod
+        _fn = getattr(_reasoning_mod, "get_available_engines", None)
+        engines: List[str] = list(_fn()) if callable(_fn) else _builtin
+    except ImportError:
+        engines = _builtin
     if cli_ctx.json_output:
         _jecho({"engines": engines})
     else:
@@ -1311,16 +1368,29 @@ def decision_record(cli_ctx: CLIContext, title: str, tags: Optional[str],
                  title=title, tags=tag_list)
             return
         try:
-            from .context import record_decision
+            from .context.decision_methods import record_decision
+            graph_store = _get_graph_store(cli_ctx)
+            cross_ctx: Dict[str, Any] = {"tags": tag_list}
+            if valid_from:
+                cross_ctx["valid_from"] = valid_from
+            if valid_until:
+                cross_ctx["valid_until"] = valid_until
+            # Map CLI flags to API: title→scenario, rationale→reasoning,
+            # first tag (if any)→category, outcome and confidence use defaults.
+            category = tag_list[0] if tag_list else "general"
             result = record_decision(
-                title=title, tags=tag_list,
-                valid_from=valid_from, valid_until=valid_until,
-                rationale=rationale,
+                graph_store,
+                category=category,
+                scenario=title,
+                reasoning=rationale or "",
+                outcome="recorded",
+                confidence=1.0,
+                cross_system_context=cross_ctx,
             )
         except ImportError as exc:
             raise click.ClickException(f"Context module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):
-            _jecho(result if isinstance(result, dict) else {"id": str(result)})
+            _jecho({"id": str(result)})
         else:
             _ok(cli_ctx, f"Decision recorded: {result}")
 
@@ -1338,22 +1408,29 @@ def decision_list(cli_ctx: CLIContext, limit: int, fmt: str, local_json: bool) -
 
     def _action() -> None:
         try:
-            from .context import DecisionQuery
-            dq = DecisionQuery(config=cli_ctx.config.to_dict())
-            results = dq.list(limit=limit)
+            from .context.decision_query import DecisionQuery
+            dq = DecisionQuery(_get_graph_store(cli_ctx))
+            results_raw = dq.find_by_time_range(
+                __import__("datetime").datetime.min,
+                __import__("datetime").datetime.now(),
+                limit=limit,
+            )
+            results = [
+                {"id": d.decision_id, "title": d.scenario, "tags": [d.category]}
+                for d in (results_raw or [])
+            ]
         except ImportError as exc:
             raise click.ClickException(f"Context module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json) or fmt == "json":
-            _jecho(results if isinstance(results, list) else [])
+            _jecho(results)
         else:
             table = Table(title="Recent Decisions")
             table.add_column("ID", style="cyan")
             table.add_column("Title")
-            table.add_column("Tags")
-            for d in (results or []):
-                if isinstance(d, dict):
-                    table.add_row(str(d.get("id", "")), str(d.get("title", "")),
-                                  str(d.get("tags", "")))
+            table.add_column("Category")
+            for d in results:
+                table.add_row(str(d.get("id", "")), str(d.get("title", "")),
+                              str(d.get("tags", [""])[0]))
             console.print(table)
 
     _run_with_error_handling(_action)
@@ -1372,13 +1449,22 @@ def decision_query(cli_ctx: CLIContext, filter_str: Optional[str],
 
     def _action() -> None:
         try:
-            from .context import DecisionQuery
-            dq = DecisionQuery(config=cli_ctx.config.to_dict())
-            results = dq.query(filter=filter_str, since=since)
+            from .context.decision_query import DecisionQuery
+            import datetime as _dt
+            dq = DecisionQuery(_get_graph_store(cli_ctx))
+            since_dt = _dt.datetime.fromisoformat(since) if since else _dt.datetime.min
+            raw = dq.find_by_time_range(since_dt, _dt.datetime.now(), limit=500)
+            results: List[Dict[str, Any]] = [
+                {"id": d.decision_id, "category": d.category, "scenario": d.scenario,
+                 "outcome": d.outcome, "confidence": d.confidence}
+                for d in (raw or [])
+                if filter_str is None
+                or filter_str.lstrip("tag:").lower() in d.category.lower()
+            ]
         except ImportError as exc:
             raise click.ClickException(f"Context module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json) or fmt == "json":
-            _jecho(results if isinstance(results, list) else [])
+            _jecho(results)
         else:
             console.print(results)
 
@@ -1402,12 +1488,16 @@ def decision_trace(cli_ctx: CLIContext, decision_id: str, fmt: str, local_json: 
 
     def _action() -> None:
         try:
-            from .context import get_causal_chain
-            chain = get_causal_chain(decision_id, config=cli_ctx.config.to_dict())
+            from .context.decision_methods import get_causal_chain
+            chain_raw = get_causal_chain(_get_graph_store(cli_ctx), decision_id)
+            chain: Any = [
+                {"id": d.decision_id, "scenario": d.scenario, "outcome": d.outcome}
+                for d in chain_raw
+            ]
         except ImportError as exc:
             raise click.ClickException(f"Context module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json) or fmt == "json":
-            _jecho(chain if isinstance(chain, dict) else {"chain": str(chain)})
+            _jecho(chain if isinstance(chain, (dict, list)) else {"chain": str(chain)})
         else:
             console.print(chain)
 
@@ -1425,13 +1515,17 @@ def decision_similar(cli_ctx: CLIContext, decision_id: str, top_k: int, local_js
 
     def _action() -> None:
         try:
-            from .context import find_precedents
-            results = find_precedents(decision_id, top_k=top_k,
-                                      config=cli_ctx.config.to_dict())
+            from .context.decision_methods import find_precedents
+            raw = find_precedents(_get_graph_store(cli_ctx), decision_id, limit=top_k)
+            results: List[Dict[str, Any]] = [
+                {"id": d.decision_id, "scenario": d.scenario, "category": d.category,
+                 "confidence": d.confidence}
+                for d in (raw or [])
+            ]
         except ImportError as exc:
             raise click.ClickException(f"Context module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):
-            _jecho(results if isinstance(results, list) else [])
+            _jecho(results)
         else:
             console.print(results)
 
@@ -1448,12 +1542,12 @@ def decision_impact(cli_ctx: CLIContext, decision_id: str, local_json: bool) -> 
 
     def _action() -> None:
         try:
-            from .context import analyze_decision_impact
-            result = analyze_decision_impact(decision_id, config=cli_ctx.config.to_dict())
+            from .context.decision_methods import analyze_decision_impact
+            result = analyze_decision_impact(_get_graph_store(cli_ctx), decision_id)
         except ImportError as exc:
             raise click.ClickException(f"Context module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):
-            _jecho(result if isinstance(result, dict) else {"impact": str(result)})
+            _jecho(result)
         else:
             console.print(result)
 
@@ -1473,14 +1567,17 @@ def decision_check(cli_ctx: CLIContext, decision_id: str, rules: Optional[str],
 
     def _action() -> None:
         try:
-            from .context import check_decision_compliance
+            from .context.decision_methods import check_decision_compliance
+            # The API expects a policy_id string; derive it from the rules file stem
+            # if provided, otherwise use the decision ID itself as the policy key.
+            policy_id = Path(rules).stem if rules else decision_id
             result = check_decision_compliance(
-                decision_id, rules_file=rules, config=cli_ctx.config.to_dict()
+                _get_graph_store(cli_ctx), decision_id, policy_id
             )
         except ImportError as exc:
             raise click.ClickException(f"Context module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):
-            _jecho(result if isinstance(result, dict) else {"compliant": str(result)})
+            _jecho(result)
         else:
             console.print(result)
 
@@ -2283,12 +2380,18 @@ def _viz_command(name: str, fn_name: str, title: str) -> None:
                 )
             except ImportError as exc:
                 raise click.ClickException(f"Visualization module not available: {exc}") from exc
-            out_path = output or f"{name}.{fmt}"
-            if isinstance(result, str):
-                Path(out_path).write_text(result, encoding="utf-8")
-            elif isinstance(result, bytes):
-                Path(out_path).write_bytes(result)
-            _ok(cli_ctx, f"Wrote {out_path}")
+            if output:
+                if isinstance(result, bytes):
+                    Path(output).write_bytes(result)
+                else:
+                    Path(output).write_text(str(result), encoding="utf-8")
+                _ok(cli_ctx, f"Wrote {output}")
+            else:
+                # No --output: emit to stdout so the caller can redirect or pipe.
+                if isinstance(result, bytes):
+                    sys.stdout.buffer.write(result)
+                else:
+                    click.echo(result)
 
         _run_with_error_handling(_action)
 
@@ -2607,6 +2710,58 @@ def backup(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
+def _collect_backup_sources(
+    cfg: Dict[str, Any],
+    config_path: Optional[str],
+    include: str,
+    strip_config: bool,
+) -> List[Tuple[str, Path]]:
+    """Return (arcname, local_path) pairs for local files to include in a backup."""
+    sources: List[Tuple[str, Path]] = []
+
+    if not strip_config and include in ("config", "all"):
+        candidates: List[str] = [c for c in [config_path, "semantica.yaml", "semantica.yml"] if c]
+        for c in candidates:
+            p = Path(c)
+            if p.is_file():
+                sources.append(("config/semantica.yaml", p))
+                break
+
+    if include in ("ontology", "all"):
+        _ont: Any = cfg.get("ontology_path") or (cfg.get("ontology") or {}).get("path")
+        ont_path: Optional[str] = str(_ont) if _ont else None
+        if ont_path:
+            p = Path(ont_path)
+            if p.is_dir():
+                for f in p.rglob("*"):
+                    if f.is_file():
+                        sources.append((f"ontology/{f.relative_to(p)}", f))
+            elif p.is_file():
+                sources.append((f"ontology/{p.name}", p))
+
+    store_map = {"graph": "graph_db", "vector": "vector_store", "triplet": "triplet_store"}
+    for store_type, cfg_key in store_map.items():
+        if include not in (store_type, "all"):
+            continue
+        info = cfg.get(cfg_key)
+        if not isinstance(info, dict):
+            continue
+        # Only file-addressable backends have a local path key
+        _dp: Any = info.get("path") or info.get("data_path") or info.get("index_path")
+        data_path: Optional[str] = str(_dp) if _dp else None
+        if not data_path:
+            continue
+        p = Path(data_path)
+        if p.is_dir():
+            for f in p.rglob("*"):
+                if f.is_file():
+                    sources.append((f"{store_type}/{f.relative_to(p)}", f))
+        elif p.is_file():
+            sources.append((f"{store_type}/{p.name}", p))
+
+    return sources
+
+
 def _redact(uri: str) -> str:
     """Redact passwords/tokens from a connection URI."""
     import re
@@ -2710,6 +2865,8 @@ def backup_create(
                     f"Keyfile {keyfile} is not owned by the current user."
                 )
             passphrase = kp.read_text(encoding="utf-8").strip()
+            if not passphrase:
+                raise click.ClickException(f"Keyfile {keyfile} is empty; cannot derive encryption key.")
         elif encrypt:
             passphrase = click.prompt("Backup passphrase", hide_input=True,
                                       confirmation_prompt=True)
@@ -2729,17 +2886,24 @@ def backup_create(
         dest.parent.mkdir(parents=True, exist_ok=True)
 
         import tarfile, tempfile, shutil
+        sources = _collect_backup_sources(cfg, cli_ctx.config_path, include, strip_config)
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
+            manifest: Dict[str, Any] = {
+                "include": include,
+                "version": str(__version__),
+                "files": [arcname for arcname, _ in sources],
+            }
             (tmp_path / "backup_manifest.json").write_text(
-                json.dumps({"include": include, "version": __version__}, indent=2),
-                encoding="utf-8",
+                json.dumps(manifest, indent=2), encoding="utf-8",
             )
             # Build the tar archive in a temp file; we'll compress/encrypt on top.
             raw_tar = Path(tmp) / "semantica-backup.tar"
             with tarfile.open(str(raw_tar), "w") as tar:
-                tar.add(tmp_path, arcname="semantica-backup",
-                        filter=lambda m: m if m.name != "semantica-backup.tar" else None)
+                tar.add(str(tmp_path / "backup_manifest.json"),
+                        arcname="semantica-backup/backup_manifest.json")
+                for arcname, local_path in sources:
+                    tar.add(str(local_path), arcname=f"semantica-backup/{arcname}")
 
             # Compress (gzip) if requested.
             if compress:
@@ -2811,17 +2975,30 @@ def backup_sync(cli_ctx: CLIContext, destination: str, include: str,
     quiet = cli_ctx.quiet or local_quiet
 
     def _action() -> None:
+        import shutil
         dest = Path(destination)
+        cfg = cli_ctx.config.to_dict()
+        sources = _collect_backup_sources(cfg, cli_ctx.config_path, include, strip_config=False)
         if _is_dry(cli_ctx, local_dry):
-            _dry(cli_ctx, "sync backup", destination=str(dest), include=include)
+            _dry(cli_ctx, "sync backup", destination=str(dest), include=include,
+                 files=[a for a, _ in sources])
             return
         dest.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(str(dest), 0o700)
         except OSError:
             pass
+        copied = 0
+        for arcname, src_path in sources:
+            dst_file = dest / arcname
+            dst_file.parent.mkdir(parents=True, exist_ok=True)
+            # Incremental: skip if destination is up-to-date
+            if dst_file.exists() and dst_file.stat().st_mtime >= src_path.stat().st_mtime:
+                continue
+            shutil.copy2(str(src_path), str(dst_file))
+            copied += 1
         if not quiet:
-            _ok(cli_ctx, f"Synced to {destination}")
+            _ok(cli_ctx, f"Synced {copied} file(s) to {destination}")
 
     _run_with_error_handling(_action)
 
@@ -2840,10 +3017,67 @@ def backup_restore(cli_ctx: CLIContext, source: str, local_dry: bool) -> None:
     cli_ctx = _require_ctx(cli_ctx)
 
     def _action() -> None:
+        import shutil, tarfile as _tf
+        src = Path(source)
         if _is_dry(cli_ctx, local_dry):
-            _dry(cli_ctx, "restore", source=source)
+            _dry(cli_ctx, "restore", source=str(src))
             return
-        _ok(cli_ctx, f"Restored from {source}")
+
+        # Determine payload: decrypt .enc first, then extract archive or copy dir.
+        work_path = src
+        if src.suffix == ".enc":
+            passphrase = click.prompt("Backup passphrase", hide_input=True)
+            try:
+                from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+                from cryptography.hazmat.primitives import hashes
+                from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+            except ImportError as exc:
+                raise click.ClickException(
+                    "Decryption requires the 'cryptography' package: pip install cryptography"
+                ) from exc
+            raw = src.read_bytes()
+            if not raw.startswith(b"SEM1") or len(raw) < 4 + 32 + 12:
+                raise click.ClickException("Unrecognised or corrupted backup file.")
+            salt, nonce, ciphertext = raw[4:36], raw[36:48], raw[48:]
+            kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=480_000)
+            key = kdf.derive(passphrase.encode())
+            try:
+                plaintext = AESGCM(key).decrypt(nonce, ciphertext, None)
+            except Exception as exc:
+                raise click.ClickException("Decryption failed — wrong passphrase?") from exc
+            import tempfile
+            tmp_enc = tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz")
+            tmp_enc.write(plaintext)
+            tmp_enc.close()
+            work_path = Path(tmp_enc.name)
+
+        try:
+            if _tf.is_tarfile(str(work_path)):
+                restore_root = Path.cwd()
+                with _tf.open(str(work_path), "r:*") as tar:
+                    # Dry-run listing was already handled above; extract now
+                    for member in tar.getmembers():
+                        # Strip the leading "semantica-backup/" prefix
+                        member.name = member.name.replace("semantica-backup/", "", 1)
+                        if member.name:
+                            tar.extract(member, path=str(restore_root))
+                            console.print(f"  restored: {member.name}")
+            elif src.is_dir():
+                restore_root = Path.cwd()
+                for f in src.rglob("*"):
+                    if f.is_file():
+                        rel = f.relative_to(src)
+                        dst = restore_root / rel
+                        dst.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(f), str(dst))
+                        console.print(f"  restored: {rel}")
+            else:
+                raise click.ClickException(f"Cannot restore from {source}: not a tar archive or directory.")
+        finally:
+            if src.suffix == ".enc":
+                work_path.unlink(missing_ok=True)
+
+        _ok(cli_ctx, f"Restore complete from {source}")
 
     _run_with_error_handling(_action)
 
