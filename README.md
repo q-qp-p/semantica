@@ -91,6 +91,200 @@ compliance = graph.check_decision_rules({"category": "loan_approval", "confidenc
 
 ---
 
+## 🖥️ CLI
+
+Every capability in Semantica is available from the terminal — no Python code required. The CLI ships with the package; no separate install needed.
+
+```bash
+pip install semantica
+semantica --help
+```
+
+### Global Flags
+
+All commands accept these flags anywhere on the command line:
+
+| Flag | Effect |
+|---|---|
+| `--json` | Machine-readable JSON to stdout; errors to stderr |
+| `--quiet` / `-q` | Suppress informational output |
+| `--no-color` | Disable Rich ANSI colour output |
+| `--dry-run` | Preview any write operation without executing it |
+| `--store <backend>` | Override graph store backend (neo4j / falkordb / age / neptune) |
+| `--vector-store <backend>` | Override vector store backend (faiss / qdrant / pinecone / …) |
+| `--profile <name>` | Switch named config profile |
+| `--config <file>` | Path to YAML/JSON config file |
+| `--log-level <level>` | Override log level for this invocation |
+
+### Data In
+
+```bash
+# Ingest files, URLs, databases, or streams into the graph
+semantica ingest ./reports/q1.pdf
+semantica ingest ./data/ --recursive --format csv
+semantica ingest https://feeds.example.com/news --type feed --watch
+
+# Parse a document into structured content
+semantica parse contract.pdf | jq '.entities'
+semantica parse source.py --parser code --format yaml
+
+# Chunk documents with configurable strategies
+semantica split report.pdf --strategy semantic --chunk-size 256
+semantica split data.csv --strategy table --format jsonl > chunks.jsonl
+
+# Normalize text and dates (deterministic, zero LLM calls)
+semantica normalize "We met last Tuesday around noon." --mode temporal
+semantica normalize entities.json --mode entity --domain legal
+```
+
+### Processing
+
+```bash
+# Extract entities, relations, triplets, and events
+semantica extract "Alice signed the contract with Acme Corp."
+semantica extract report.pdf --mode triplets --method llm --model claude-sonnet-4-6
+cat text.txt | semantica extract - --mode relations --format yaml --output out.yaml
+
+# Generate, search, and index embeddings
+semantica embed generate ./entities.json --model sentence-transformers --output embeddings.json
+semantica embed search "CEO of Acme Corp" --store qdrant --top-k 5 --hybrid
+semantica embed index embeddings.json --store faiss --namespace production
+
+# Deduplicate entities in the graph
+semantica deduplicate --strategy hybrid --min-similarity 0.8 --action merge --dry-run
+semantica deduplicate --action report --json | jq '.duplicate_pairs'
+```
+
+### Knowledge Graph
+
+```bash
+semantica kg build -s ./data/           # build KG from source
+semantica kg query "MATCH (n:Person) RETURN n LIMIT 10" --lang cypher --json
+semantica kg stats
+semantica kg analyze --mode centrality
+semantica kg find-path --from "Alice" --to "Acme Corp" --type shortest
+semantica kg resolve                    # entity resolution
+semantica kg validate                   # graph integrity check
+```
+
+### Intelligence
+
+```bash
+# Reasoning
+semantica reason run --engine rete --rules business-rules.yaml
+semantica reason explain "Alice is-manager-of Engineering" --format markdown
+semantica reason query "SELECT ?x WHERE { ?x :hasRole :Manager }" --with-inference
+semantica reason list
+
+# Decision tracking
+semantica decision record --title "Approve vendor X" --tags "finance,vendor" --rationale "Cost savings"
+semantica decision list --format json
+semantica decision trace dec_abc123 --format mermaid
+semantica decision similar dec_abc123 --top-k 5
+semantica decision impact dec_abc123 --json
+semantica decision check dec_abc123 --rules compliance.yaml
+
+# Temporal queries
+semantica temporal snapshot --at "2026-01-15T09:00:00Z"
+semantica temporal history "Alice" --since 2025-01-01
+semantica temporal allen --interval1 "2024-01-01/2024-06-30" --interval2 "2024-04-01/2024-12-31"
+```
+
+### Provenance & Validation
+
+```bash
+# Provenance
+semantica provenance lineage "Alice" --depth 3
+semantica provenance audit --since 2025-01-01 --format csv --output audit.csv
+semantica provenance export --format turtle --output prov.ttl
+
+# Validation
+semantica validate shacl --shapes shapes.ttl --strictness strict --report
+semantica validate conflicts --strategy all
+semantica validate integrity
+```
+
+### Ontology
+
+```bash
+semantica ontology generate --domain finance --output finance.ttl
+semantica ontology import schema.ttl --format turtle
+semantica ontology validate --shapes shapes.ttl
+semantica ontology health
+semantica ontology skos search "revenue recognition"
+semantica ontology align --source onto1.ttl --target onto2.ttl --strategy semantic
+```
+
+### Export & Visualize
+
+```bash
+# Export in 14 formats
+semantica export --format turtle --output graph.ttl --with-provenance
+semantica export --format parquet --compress --output dump.parquet.gz
+semantica export --format json | python -m json.tool
+
+# Visualize (outputs HTML/SVG/PNG/PDF to stdout or --output)
+semantica visualize kg --layout forceatlas2 --output graph.html
+semantica visualize ontology --format svg --output schema.svg
+semantica visualize embeddings --format html
+```
+
+### Orchestration
+
+```bash
+# Pipeline
+semantica pipeline init --template rag --output pipeline.yaml
+semantica pipeline validate pipeline.yaml
+semantica pipeline run pipeline.yaml --parallel --dry-run
+
+# Store management
+semantica store list --json
+semantica store connect --uri neo4j://localhost:7687
+semantica store flush --confirm
+
+# Encrypted backup
+semantica backup create ./backups/$(date +%F).tar.gz --compress --encrypt
+semantica backup sync /mnt/external/semantica-backup
+semantica backup restore ./backups/2026-06-01.tar.gz --dry-run
+semantica backup schedule --dest /mnt/backup --freq daily --encrypt
+```
+
+### Services
+
+```bash
+# Start/stop the REST API server
+semantica server start --port 8000 --workers 4
+semantica server status --json
+semantica server stop
+
+# Start/stop the Knowledge Explorer UI
+semantica explorer start --port 5173
+semantica explorer open
+
+# MCP server
+semantica mcp start --transport http --port 3000
+semantica mcp list-tools
+semantica mcp call extract_entities --args '{"text": "Alice works at Acme Corp"}'
+```
+
+### Shell Completion
+
+```bash
+# Bash
+semantica completion bash >> ~/.bashrc && source ~/.bashrc
+
+# Zsh
+semantica completion zsh >> ~/.zshrc && source ~/.zshrc
+
+# Fish
+semantica completion fish > ~/.config/fish/completions/semantica.fish
+
+# PowerShell
+semantica completion powershell >> $PROFILE
+```
+
+---
+
 ## 🆕 What's New in v0.5.0
 
 **Released May 11, 2026** · [Full Release Notes](RELEASE_NOTES.md) · [Changelog](CHANGELOG.md)
