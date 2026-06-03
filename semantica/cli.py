@@ -880,9 +880,12 @@ def extract(
                 result = extractor.extract(text)
 
             elif mode == "relations":
-                extractor = RelationExtractor(config=config)
-                result = extractor.extract(text)
+                ner_extractor = NERExtractor(config=config)
+                entities = ner_extractor.extract(text)
 
+                extractor = RelationExtractor(config=config)
+                result = extractor.extract(text, entities=entities)
+                
             elif mode == "ner":
                 extractor = NERExtractor(config=config)
                 result = extractor.extract(text)
