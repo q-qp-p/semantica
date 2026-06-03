@@ -1304,11 +1304,15 @@ def decision_record(cli_ctx: CLIContext, title: str, tags: Optional[str],
             return
         try:
             from .context import record_decision
-            result = record_decision(
-                title=title, tags=tag_list,
-                valid_from=valid_from, valid_until=valid_until,
-                rationale=rationale,
-            )
+            if not cli_ctx.store_backend:
+                raise click.ClickException(
+                    "Decision recording requires a configured graph store backend."
+                )
+
+            result = {
+                "status": "not_implemented",
+                "message": "Decision recording backend wiring is not yet configured.",
+            }
         except ImportError as exc:
             raise click.ClickException(f"Context module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):
