@@ -854,17 +854,46 @@ def extract(
             p = Path(input_path)
             text = p.read_text(encoding="utf-8") if p.exists() else input_path
         try:
-            from .semantic_extract import SemanticAnalyzer
+            from .semantic_extract import (
+                NERExtractor,
+                RelationExtractor,
+                TripletExtractor,
+                EventDetector,
+                SemanticAnalyzer,
+            )
+
             kwargs: Dict[str, Any] = {
-                "text": text, "mode": mode, "method": method,
-                "min_confidence": confidence,
+                "text": text,
+                "method": method,
             }
+
             if model:
                 kwargs["model"] = model
+
             if temporal:
                 kwargs["temporal"] = True
-            analyzer = SemanticAnalyzer(config=cli_ctx.config.to_dict())
-            result = analyzer.extract(**kwargs)
+
+            config = cli_ctx.config.to_dict()
+
+            if mode == "triplets":
+                extractor = TripletExtractor(config=config)
+                result = extractor.extract(text)
+
+            elif mode == "relations":
+                extractor = RelationExtractor(config=config)
+                result = extractor.extract(text)
+
+            elif mode == "ner":
+                extractor = NERExtractor(config=config)
+                result = extractor.extract(text)
+
+            elif mode == "events":
+                extractor = EventDetector(config=config)
+                result = extractor.extract(text)
+
+            else:
+                analyzer = SemanticAnalyzer(config=config)
+                result = analyzer.analyze(text)
         except ImportError as exc:
             raise click.ClickException(f"Extract module not available: {exc}") from exc
         json_out = _is_json(cli_ctx, local_json) or fmt == "json"
