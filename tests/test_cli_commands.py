@@ -24,7 +24,6 @@ import pytest
 from click.testing import CliRunner
 
 import semantica.cli as cli_module
-from semantica.cli import main
 
 
 # ─── fixtures ─────────────────────────────────────────────────────────────────
@@ -81,7 +80,7 @@ class TestGlobalFlags:
             captured["json"] = ctx.json_output
 
         monkeypatch.setattr(cli_module, "_run_build", fake_run_build)
-        result = runner.invoke(main, ["--json", "kg", "build", "-s", "x.txt"])
+        result = runner.invoke(cli_module.main, ["--json", "kg", "build", "-s", "x.txt"])
         assert result.exit_code == 0
         assert captured["json"] is True
 
@@ -92,7 +91,7 @@ class TestGlobalFlags:
             captured["quiet"] = ctx.quiet
 
         monkeypatch.setattr(cli_module, "_run_build", fake_run_build)
-        result = runner.invoke(main, ["--quiet", "kg", "build", "-s", "x.txt"])
+        result = runner.invoke(cli_module.main, ["--quiet", "kg", "build", "-s", "x.txt"])
         assert result.exit_code == 0
         assert captured["quiet"] is True
 
@@ -103,7 +102,7 @@ class TestGlobalFlags:
             captured["dry_run"] = ctx.dry_run_global
 
         monkeypatch.setattr(cli_module, "_run_build", fake_run_build)
-        result = runner.invoke(main, ["--dry-run", "kg", "build", "-s", "x.txt"])
+        result = runner.invoke(cli_module.main, ["--dry-run", "kg", "build", "-s", "x.txt"])
         assert result.exit_code == 0
         assert captured["dry_run"] is True
 
@@ -114,7 +113,7 @@ class TestGlobalFlags:
             captured["store"] = ctx.store_backend
 
         monkeypatch.setattr(cli_module, "_run_build", fake_run_build)
-        result = runner.invoke(main, ["--store", "neo4j", "kg", "build", "-s", "x.txt"])
+        result = runner.invoke(cli_module.main, ["--store", "neo4j", "kg", "build", "-s", "x.txt"])
         assert result.exit_code == 0
         assert captured["store"] == "neo4j"
 
@@ -125,25 +124,49 @@ class TestGlobalFlags:
             captured["vs"] = ctx.vector_store_backend
 
         monkeypatch.setattr(cli_module, "_run_build", fake_run_build)
-        result = runner.invoke(main, ["--vector-store", "qdrant", "kg", "build", "-s", "x.txt"])
+        result = runner.invoke(cli_module.main, ["--vector-store", "qdrant", "kg", "build", "-s", "x.txt"])
         assert result.exit_code == 0
         assert captured["vs"] == "qdrant"
 
     def test_root_help_shows_all_global_flags(self, runner):
-        result = runner.invoke(main, ["--help"])
+        result = runner.invoke(cli_module.main, ["--help"])
         assert result.exit_code == 0
         for flag in ["--json", "--quiet", "--dry-run", "--store", "--vector-store",
                      "--profile", "--no-color"]:
             assert flag in result.output, f"{flag} missing from root help"
 
     def test_root_help_shows_all_command_groups(self, runner):
-        result = runner.invoke(main, ["--help"])
+        result = runner.invoke(cli_module.main, ["--help"])
         assert result.exit_code == 0
         for cmd in ["ingest", "parse", "split", "normalize", "extract", "embed",
                     "deduplicate", "reason", "decision", "temporal", "provenance",
                     "validate", "ontology", "export", "visualize", "pipeline",
                     "store", "backup", "server", "explorer", "mcp", "completion"]:
             assert cmd in result.output, f"{cmd!r} missing from root help"
+
+    def test_default_log_file_failure_falls_back_without_polluting_json(
+        self,
+        runner,
+        monkeypatch,
+    ):
+        calls = []
+
+        def fake_setup_logging(*, config=None, **_kwargs):
+            calls.append(dict(config or {}))
+            if len(calls) == 1:
+                raise PermissionError("readonly semantica.log")
+
+        monkeypatch.setattr(cli_module, "setup_logging", fake_setup_logging)
+        result = runner.invoke(
+            cli_module.main,
+            ["--json", "backup", "schedule", "--dest", "x", "--freq", "daily"],
+        )
+
+        payload = _json_output(result)
+        assert payload["cron"].startswith("0 2 * * *")
+        assert len(calls) == 2
+        assert calls[1].get("file") is None
+        assert "readonly semantica.log" not in result.output
 
 
 # ─── kg subcommands ───────────────────────────────────────────────────────────
@@ -153,7 +176,7 @@ class TestKgSubcommands:
     @pytest.mark.parametrize("sub", ["query", "stats", "analyze", "find-path",
                                       "resolve", "predict", "validate"])
     def test_help_exits_0(self, runner, sub):
-        result = runner.invoke(main, ["kg", sub, "--help"])
+        result = runner.invoke(cli_module.main, ["kg", sub, "--help"])
         _ok(result, substr=sub.replace("-", " ") if sub != "find-path" else "")
         assert result.exit_code == 0
 
@@ -162,13 +185,13 @@ class TestKgSubcommands:
             execute_query=lambda q, **kw: {"query": q, "lang": "cypher", "rows": []},
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.graph_store", fake_gs)
-        result = runner.invoke(main, ["kg", "query", "MATCH (n) RETURN n", "--json"])
+        result = runner.invoke(cli_module.main, ["kg", "query", "MATCH (n) RETURN n", "--json"])
         _ok(result)
         data = _json_output(result)
         assert "query" in data
 
     def test_kg_query_fails_cleanly_without_backend(self, runner):
-        result = runner.invoke(main, ["kg", "query", "MATCH (n) RETURN n"])
+        result = runner.invoke(cli_module.main, ["kg", "query", "MATCH (n) RETURN n"])
         # Either exits 0 (fallback) or non-0 (clean error) — never traceback
         assert "Traceback" not in result.output
 
@@ -179,7 +202,7 @@ class TestKgSubcommands:
             ),
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.kg", fake_kg)
-        result = runner.invoke(main, ["kg", "stats", "--json"])
+        result = runner.invoke(cli_module.main, ["kg", "stats", "--json"])
         _ok(result)
         data = _json_output(result)
         assert isinstance(data, dict)
@@ -192,13 +215,13 @@ class TestKgSubcommands:
             ),
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.kg", fake_kg)
-        result = runner.invoke(main, ["kg", "analyze", "--mode", "community", "--json"])
+        result = runner.invoke(cli_module.main, ["kg", "analyze", "--mode", "community", "--json"])
         _ok(result)
         data = _json_output(result)
         assert isinstance(data, dict)
 
     def test_kg_find_path_requires_from_and_to(self, runner):
-        result = runner.invoke(main, ["kg", "find-path"])
+        result = runner.invoke(cli_module.main, ["kg", "find-path"])
         assert result.exit_code != 0
 
     def test_kg_find_path_json_with_mock(self, runner, monkeypatch):
@@ -208,7 +231,7 @@ class TestKgSubcommands:
             ),
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.kg", fake_kg)
-        result = runner.invoke(main, ["kg", "find-path",
+        result = runner.invoke(cli_module.main, ["kg", "find-path",
                                       "--from", "Alice", "--to", "Acme", "--json"])
         _ok(result)
         data = _json_output(result)
@@ -219,7 +242,7 @@ class TestKgSubcommands:
             EntityResolver=lambda **kw: MagicMock(resolve=lambda: {"resolved": 5}),
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.kg", fake_kg)
-        result = runner.invoke(main, ["kg", "resolve"])
+        result = runner.invoke(cli_module.main, ["kg", "resolve"])
         assert result.exit_code == 0
 
     def test_kg_predict_exits_0_with_mock(self, runner, monkeypatch):
@@ -227,7 +250,7 @@ class TestKgSubcommands:
             LinkPredictor=lambda **kw: MagicMock(predict=lambda: {"predictions": []}),
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.kg", fake_kg)
-        result = runner.invoke(main, ["kg", "predict"])
+        result = runner.invoke(cli_module.main, ["kg", "predict"])
         assert result.exit_code == 0
 
     def test_kg_validate_exits_0_with_mock(self, runner, monkeypatch):
@@ -238,7 +261,7 @@ class TestKgSubcommands:
             ),
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.kg", fake_kg)
-        result = runner.invoke(main, ["kg", "validate"])
+        result = runner.invoke(cli_module.main, ["kg", "validate"])
         assert result.exit_code == 0
 
 
@@ -247,7 +270,7 @@ class TestKgSubcommands:
 
 class TestIngest:
     def test_help_shows_flags(self, runner):
-        result = runner.invoke(main, ["ingest", "--help"])
+        result = runner.invoke(cli_module.main, ["ingest", "--help"])
         _ok(result)
         for flag in ["--type", "--format", "--recursive", "--watch",
                      "--batch-size", "--store", "--output", "--dry-run"]:
@@ -255,7 +278,7 @@ class TestIngest:
 
     def test_dry_run_json_exits_0(self, runner):
         # Per-command --json with --dry-run should emit JSON (fixed via json_out param)
-        result = runner.invoke(main, ["ingest", "data.pdf", "--dry-run", "--json"])
+        result = runner.invoke(cli_module.main, ["ingest", "data.pdf", "--dry-run", "--json"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
@@ -263,13 +286,13 @@ class TestIngest:
 
     def test_dry_run_global_json_exits_0(self, runner):
         # Global --json with per-command --dry-run
-        result = runner.invoke(main, ["--json", "ingest", "data.pdf", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["--json", "ingest", "data.pdf", "--dry-run"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
 
     def test_dry_run_text_exits_0(self, runner):
-        result = runner.invoke(main, ["ingest", "data.pdf", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["ingest", "data.pdf", "--dry-run"])
         _ok(result, substr="Dry run")
 
     def test_runtime_path_passes_source_positionally(self, runner, monkeypatch):
@@ -283,7 +306,7 @@ class TestIngest:
         monkeypatch.setattr("semantica.ingest.methods.ingest_file", fake_ingest_file)
 
         result = runner.invoke(
-            main,
+            cli_module.main,
             ["ingest", "README.md", "--type", "file", "--format", "csv", "--json"],
         )
 
@@ -305,7 +328,7 @@ class TestIngest:
 
         monkeypatch.setattr("semantica.ingest.methods.ingest_file", fake_ingest_file)
 
-        result = runner.invoke(main, ["ingest", "README.md", "--json"])
+        result = runner.invoke(cli_module.main, ["ingest", "README.md", "--json"])
 
         _ok(result)
         data = _json_output(result)
@@ -320,21 +343,21 @@ class TestIngest:
             (_ for _ in ()).throw(ImportError(n))
             if n.startswith("semantica.ingest") else original_import(n, *a, **k)
         )):
-            result = runner.invoke(main, ["ingest", "data.pdf"])
+            result = runner.invoke(cli_module.main, ["ingest", "data.pdf"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_type_choice_validation(self, runner):
-        result = runner.invoke(main, ["ingest", "x.pdf", "--type", "invalid_type"])
+        result = runner.invoke(cli_module.main, ["ingest", "x.pdf", "--type", "invalid_type"])
         assert result.exit_code != 0
 
     def test_recursive_flag_accepted(self, runner):
-        result = runner.invoke(main, ["ingest", "./data", "--recursive", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["ingest", "./data", "--recursive", "--dry-run"])
         _ok(result)
 
     def test_global_dry_run_triggers_ingest_dry(self, runner):
         # Both global --dry-run and global --json
-        result = runner.invoke(main, ["--dry-run", "--json", "ingest", "data.pdf"])
+        result = runner.invoke(cli_module.main, ["--dry-run", "--json", "ingest", "data.pdf"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
@@ -345,17 +368,17 @@ class TestIngest:
 
 class TestParse:
     def test_help_shows_flags(self, runner):
-        result = runner.invoke(main, ["parse", "--help"])
+        result = runner.invoke(cli_module.main, ["parse", "--help"])
         _ok(result)
         for flag in ["--parser", "--format"]:
             assert flag in result.output
 
     def test_missing_file_arg_fails(self, runner):
-        result = runner.invoke(main, ["parse"])
+        result = runner.invoke(cli_module.main, ["parse"])
         assert result.exit_code != 0
 
     def test_nonexistent_file_fails(self, runner):
-        result = runner.invoke(main, ["parse", "no_such_file.pdf"])
+        result = runner.invoke(cli_module.main, ["parse", "no_such_file.pdf"])
         assert result.exit_code != 0
 
     def test_parse_real_file(self, runner):
@@ -366,12 +389,12 @@ class TestParse:
                 (_ for _ in ()).throw(ImportError(n))
                 if n.startswith("semantica.parse") else __import__(n, *a, **k)
             )):
-                result = runner.invoke(main, ["parse", "doc.txt"])
+                result = runner.invoke(cli_module.main, ["parse", "doc.txt"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_format_choices(self, runner):
-        result = runner.invoke(main, ["parse", "--help"])
+        result = runner.invoke(cli_module.main, ["parse", "--help"])
         assert "json" in result.output
         assert "yaml" in result.output
         assert "table" in result.output
@@ -382,13 +405,13 @@ class TestParse:
 
 class TestSplit:
     def test_help_shows_strategy_choices(self, runner):
-        result = runner.invoke(main, ["split", "--help"])
+        result = runner.invoke(cli_module.main, ["split", "--help"])
         _ok(result)
         for strategy in ["recursive", "semantic", "entity-aware", "table"]:
             assert strategy in result.output
 
     def test_missing_input_fails(self, runner):
-        result = runner.invoke(main, ["split"])
+        result = runner.invoke(cli_module.main, ["split"])
         assert result.exit_code != 0
 
     def test_split_with_import_error(self, runner):
@@ -399,7 +422,7 @@ class TestSplit:
                 (_ for _ in ()).throw(ImportError(n))
                 if n.startswith("semantica.split") else __import__(n, *a, **k)
             )):
-                result = runner.invoke(main, ["split", "doc.txt"])
+                result = runner.invoke(cli_module.main, ["split", "doc.txt"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -417,7 +440,7 @@ class TestSplit:
             with open("doc.txt", "w") as f:
                 f.write("line1\nline2")
             result = runner.invoke(
-                main, ["split", "doc.txt", "--output", "out.json"]
+                cli_module.main, ["split", "doc.txt", "--output", "out.json"]
             )
             if result.exit_code == 0:
                 assert os.path.exists("out.json")
@@ -428,7 +451,7 @@ class TestSplit:
 
 class TestNormalize:
     def test_help_shows_mode_and_domain(self, runner):
-        result = runner.invoke(main, ["normalize", "--help"])
+        result = runner.invoke(cli_module.main, ["normalize", "--help"])
         _ok(result)
         assert "--mode" in result.output
         assert "--domain" in result.output
@@ -442,7 +465,7 @@ class TestNormalize:
         monkeypatch.setitem(
             __import__("sys").modules, "semantica.normalize", fake_norm
         )
-        result = runner.invoke(main, ["normalize", "hello world", "--mode", "text"])
+        result = runner.invoke(cli_module.main, ["normalize", "hello world", "--mode", "text"])
         assert result.exit_code == 0
         assert "HELLO WORLD" in result.output
 
@@ -455,13 +478,13 @@ class TestNormalize:
         monkeypatch.setitem(
             __import__("sys").modules, "semantica.normalize", fake_norm
         )
-        result = runner.invoke(main, ["normalize", "text", "--json"])
+        result = runner.invoke(cli_module.main, ["normalize", "text", "--json"])
         _ok(result)
         data = _json_output(result)
         assert "result" in data
 
     def test_domain_choices(self, runner):
-        result = runner.invoke(main, ["normalize", "--help"])
+        result = runner.invoke(cli_module.main, ["normalize", "--help"])
         for d in ["healthcare", "legal", "finance", "general"]:
             assert d in result.output
 
@@ -471,7 +494,7 @@ class TestNormalize:
 
 class TestExtract:
     def test_help_shows_mode_method_flags(self, runner):
-        result = runner.invoke(main, ["extract", "--help"])
+        result = runner.invoke(cli_module.main, ["extract", "--help"])
         _ok(result)
         for flag in ["--mode", "--method", "--model", "--confidence",
                      "--temporal", "--format", "--output"]:
@@ -486,7 +509,7 @@ class TestExtract:
         monkeypatch.setitem(
             __import__("sys").modules, "semantica.semantic_extract", fake_ext
         )
-        result = runner.invoke(main, ["extract", "Alice works at Acme.", "--json"])
+        result = runner.invoke(cli_module.main, ["extract", "Alice works at Acme.", "--json"])
         _ok(result)
         data = _json_output(result)
         assert isinstance(data, dict)
@@ -500,7 +523,7 @@ class TestExtract:
         monkeypatch.setitem(
             __import__("sys").modules, "semantica.semantic_extract", fake_ext
         )
-        result = runner.invoke(main, ["extract", "-", "--json"], input="Alice\n")
+        result = runner.invoke(cli_module.main, ["extract", "-", "--json"], input="Alice\n")
         _ok(result)
 
     def test_import_error_is_clean(self, runner):
@@ -508,12 +531,12 @@ class TestExtract:
             (_ for _ in ()).throw(ImportError(n))
             if n.startswith("semantica.semantic_extract") else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["extract", "text"])
+            result = runner.invoke(cli_module.main, ["extract", "text"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_invalid_method_choice(self, runner):
-        result = runner.invoke(main, ["extract", "text", "--method", "magic"])
+        result = runner.invoke(cli_module.main, ["extract", "text", "--method", "magic"])
         assert result.exit_code != 0
 
 
@@ -522,24 +545,24 @@ class TestExtract:
 
 class TestEmbed:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["embed", "--help"])
+        result = runner.invoke(cli_module.main, ["embed", "--help"])
         _ok(result)
         for sub in ["generate", "search", "index"]:
             assert sub in result.output
 
     def test_generate_help(self, runner):
-        result = runner.invoke(main, ["embed", "generate", "--help"])
+        result = runner.invoke(cli_module.main, ["embed", "generate", "--help"])
         _ok(result)
         assert "--model" in result.output
 
     def test_search_help(self, runner):
-        result = runner.invoke(main, ["embed", "search", "--help"])
+        result = runner.invoke(cli_module.main, ["embed", "search", "--help"])
         _ok(result)
         assert "--top-k" in result.output
         assert "--hybrid" in result.output
 
     def test_index_help(self, runner):
-        result = runner.invoke(main, ["embed", "index", "--help"])
+        result = runner.invoke(cli_module.main, ["embed", "index", "--help"])
         _ok(result)
         assert "--store" in result.output
 
@@ -548,7 +571,7 @@ class TestEmbed:
             (_ for _ in ()).throw(ImportError(n))
             if "embeddings" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["embed", "generate", "entities.json"])
+            result = runner.invoke(cli_module.main, ["embed", "generate", "entities.json"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -557,12 +580,42 @@ class TestEmbed:
             (_ for _ in ()).throw(ImportError(n))
             if "vector_store" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["embed", "search", "CEO query"])
+            result = runner.invoke(cli_module.main, ["embed", "search", "CEO query"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_index_requires_existing_file(self, runner):
-        result = runner.invoke(main, ["embed", "index", "nonexistent.parquet"])
+        result = runner.invoke(cli_module.main, ["embed", "index", "nonexistent.parquet"])
+        assert result.exit_code != 0
+
+    def test_index_loads_vectors_from_json(self, runner, monkeypatch, tmp_path):
+        """Vectors are loaded from the file; create_index receives List[np.ndarray]."""
+        import json as _json, numpy as np
+        records = [{"id": "a", "embedding": [0.1, 0.2, 0.3]},
+                   {"id": "b", "embedding": [0.4, 0.5, 0.6]}]
+        json_file = tmp_path / "test.json"
+        json_file.write_text(_json.dumps(records), encoding="utf-8")
+
+        captured = {}
+
+        def fake_create_index(vectors, ids=None, **kw):
+            captured["vectors"] = vectors
+            captured["ids"] = ids
+            return {"status": "ok"}
+
+        fake_vs = _fake_module(create_index=fake_create_index)
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+        result = runner.invoke(cli_module.main, ["embed", "index", str(json_file), "--json"])
+        _ok(result)
+        assert len(captured["vectors"]) == 2
+        assert isinstance(captured["vectors"][0], np.ndarray)
+
+    def test_index_rejects_unsupported_format(self, runner, monkeypatch, tmp_path):
+        txt_file = tmp_path / "embeddings.txt"
+        txt_file.write_text("not a supported format")
+        fake_vs = _fake_module(create_index=MagicMock(return_value={}))
+        monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
+        result = runner.invoke(cli_module.main, ["embed", "index", str(txt_file)])
         assert result.exit_code != 0
 
 
@@ -571,17 +624,17 @@ class TestEmbed:
 
 class TestDeduplicate:
     def test_help_shows_flags(self, runner):
-        result = runner.invoke(main, ["deduplicate", "--help"])
+        result = runner.invoke(cli_module.main, ["deduplicate", "--help"])
         _ok(result)
         for flag in ["--strategy", "--min-similarity", "--action", "--dry-run"]:
             assert flag in result.output
 
     def test_dry_run_exits_0(self, runner):
-        result = runner.invoke(main, ["deduplicate", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["deduplicate", "--dry-run"])
         _ok(result)
 
     def test_dry_run_json(self, runner):
-        result = runner.invoke(main, ["deduplicate", "--dry-run", "--json"])
+        result = runner.invoke(cli_module.main, ["deduplicate", "--dry-run", "--json"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
@@ -601,7 +654,7 @@ class TestDeduplicate:
         monkeypatch.setattr("semantica.graph_store.methods.get_nodes", lambda **kwargs: entities)
 
         result = runner.invoke(
-            main,
+            cli_module.main,
             ["deduplicate", "--action", "detect", "--min-similarity", "0.1", "--json"],
         )
 
@@ -634,7 +687,7 @@ class TestDeduplicate:
         )
 
         result = runner.invoke(
-            main,
+            cli_module.main,
             ["deduplicate", "--action", "merge", "--json"],
         )
 
@@ -647,7 +700,7 @@ class TestDeduplicate:
         assert captured["kwargs"]["sort_by"] == "similarity_score"
 
     def test_global_dry_run_triggers_dry(self, runner):
-        result = runner.invoke(main, ["--dry-run", "--json", "deduplicate"])
+        result = runner.invoke(cli_module.main, ["--dry-run", "--json", "deduplicate"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
@@ -657,17 +710,17 @@ class TestDeduplicate:
             (_ for _ in ()).throw(ImportError(n))
             if "deduplication" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["deduplicate"])
+            result = runner.invoke(cli_module.main, ["deduplicate"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_invalid_strategy_choice(self, runner):
-        result = runner.invoke(main, ["deduplicate", "--strategy", "magic"])
+        result = runner.invoke(cli_module.main, ["deduplicate", "--strategy", "magic"])
         assert result.exit_code != 0
 
     @pytest.mark.parametrize("action", ["detect", "merge", "report"])
     def test_action_choices_accepted(self, runner, action):
-        result = runner.invoke(main, ["deduplicate", "--action", action, "--dry-run"])
+        result = runner.invoke(cli_module.main, ["deduplicate", "--action", action, "--dry-run"])
         _ok(result)
 
 
@@ -676,26 +729,26 @@ class TestDeduplicate:
 
 class TestReason:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["reason", "--help"])
+        result = runner.invoke(cli_module.main, ["reason", "--help"])
         _ok(result)
         for sub in ["run", "explain", "query", "list"]:
             assert sub in result.output
 
     def test_list_shows_engines(self, runner):
-        result = runner.invoke(main, ["reason", "list"])
+        result = runner.invoke(cli_module.main, ["reason", "list"])
         _ok(result)
         assert "rete" in result.output
 
     def test_list_json(self, runner):
         # list command has no --json flag, output via cli_ctx.json_output
-        result2 = runner.invoke(main, ["--json", "reason", "list"])
+        result2 = runner.invoke(cli_module.main, ["--json", "reason", "list"])
         _ok(result2)
         data = json.loads(result2.output.strip())
         assert "engines" in data
         assert "rete" in data["engines"]
 
     def test_run_help(self, runner):
-        result = runner.invoke(main, ["reason", "run", "--help"])
+        result = runner.invoke(cli_module.main, ["reason", "run", "--help"])
         _ok(result)
         assert "--engine" in result.output
 
@@ -704,12 +757,12 @@ class TestReason:
             (_ for _ in ()).throw(ImportError(n))
             if "reasoning" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["reason", "run"])
+            result = runner.invoke(cli_module.main, ["reason", "run"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_explain_requires_conclusion(self, runner):
-        result = runner.invoke(main, ["reason", "explain"])
+        result = runner.invoke(cli_module.main, ["reason", "explain"])
         assert result.exit_code != 0
 
     def test_explain_import_error_is_clean(self, runner):
@@ -717,7 +770,7 @@ class TestReason:
             (_ for _ in ()).throw(ImportError(n))
             if "reasoning" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["reason", "explain", "Alice is-manager-of Eng"])
+            result = runner.invoke(cli_module.main, ["reason", "explain", "Alice is-manager-of Eng"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -726,7 +779,7 @@ class TestReason:
             (_ for _ in ()).throw(ImportError(n))
             if "reasoning" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["reason", "query", "SELECT ?x WHERE {}"])
+            result = runner.invoke(cli_module.main, ["reason", "query", "SELECT ?x WHERE {}"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -736,24 +789,24 @@ class TestReason:
 
 class TestDecision:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["decision", "--help"])
+        result = runner.invoke(cli_module.main, ["decision", "--help"])
         _ok(result)
         for sub in ["record", "list", "query", "trace", "similar", "impact", "check"]:
             assert sub in result.output
 
     def test_record_requires_title(self, runner):
-        result = runner.invoke(main, ["decision", "record"])
+        result = runner.invoke(cli_module.main, ["decision", "record"])
         assert result.exit_code != 0
 
     def test_record_dry_run_json(self, runner):
-        result = runner.invoke(main, ["decision", "record",
+        result = runner.invoke(cli_module.main, ["decision", "record",
                                       "--title", "Approve X", "--dry-run", "--json"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
 
     def test_record_global_dry_run_json(self, runner):
-        result = runner.invoke(main, ["--json", "--dry-run", "decision", "record",
+        result = runner.invoke(cli_module.main, ["--json", "--dry-run", "decision", "record",
                                       "--title", "Approve X"])
         _ok(result)
         data = _json_output(result)
@@ -762,38 +815,47 @@ class TestDecision:
     def test_record_import_error_is_clean(self, runner):
         with patch("builtins.__import__", side_effect=lambda n, *a, **k: (
             (_ for _ in ()).throw(ImportError(n))
-            if n.startswith("semantica.context") else __import__(n, *a, **k)
+            if "semantica.context" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["decision", "record", "--title", "X"])
+            result = runner.invoke(cli_module.main, ["decision", "record", "--title", "X"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_list_json(self, runner, monkeypatch):
-        fake_ctx = _fake_module(
-            DecisionQuery=lambda **kw: MagicMock(
-                list=lambda **kw2: [{"id": "d1", "title": "T", "tags": []}]
-            ),
-        )
-        monkeypatch.setitem(__import__("sys").modules, "semantica.context", fake_ctx)
-        result = runner.invoke(main, ["decision", "list", "--format", "json"])
+        import datetime
+        fake_dq = MagicMock()
+        d = MagicMock()
+        d.decision_id = "d1"
+        d.scenario = "T"
+        d.category = "general"
+        d.outcome = "ok"
+        d.confidence = 1.0
+        fake_dq.find_by_time_range.return_value = [d]
+        fake_decision_query = _fake_module(DecisionQuery=lambda *a, **kw: fake_dq)
+        fake_graph_store = _fake_module(GraphStore=MagicMock(return_value=MagicMock()))
+        monkeypatch.setitem(__import__("sys").modules,
+                            "semantica.context.decision_query", fake_decision_query)
+        monkeypatch.setitem(__import__("sys").modules,
+                            "semantica.graph_store", fake_graph_store)
+        result = runner.invoke(cli_module.main, ["decision", "list", "--format", "json"])
         _ok(result)
 
     def test_trace_import_error_is_clean(self, runner):
         with patch("builtins.__import__", side_effect=lambda n, *a, **k: (
             (_ for _ in ()).throw(ImportError(n))
-            if n.startswith("semantica.context") else __import__(n, *a, **k)
+            if "semantica.context" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["decision", "trace", "dec_123"])
+            result = runner.invoke(cli_module.main, ["decision", "trace", "dec_123"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_check_requires_id(self, runner):
-        result = runner.invoke(main, ["decision", "check"])
+        result = runner.invoke(cli_module.main, ["decision", "check"])
         assert result.exit_code != 0
 
     @pytest.mark.parametrize("sub", ["similar", "impact"])
     def test_sub_requires_id(self, runner, sub):
-        result = runner.invoke(main, ["decision", sub])
+        result = runner.invoke(cli_module.main, ["decision", sub])
         assert result.exit_code != 0
 
 
@@ -802,13 +864,13 @@ class TestDecision:
 
 class TestTemporal:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["temporal", "--help"])
+        result = runner.invoke(cli_module.main, ["temporal", "--help"])
         _ok(result)
         for sub in ["snapshot", "query", "history", "distance", "allen"]:
             assert sub in result.output
 
     def test_snapshot_requires_at(self, runner):
-        result = runner.invoke(main, ["temporal", "snapshot"])
+        result = runner.invoke(cli_module.main, ["temporal", "snapshot"])
         assert result.exit_code != 0
 
     def test_snapshot_json(self, runner, monkeypatch):
@@ -818,18 +880,18 @@ class TestTemporal:
             ),
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.kg", fake_kg)
-        result = runner.invoke(main, ["temporal", "snapshot",
+        result = runner.invoke(cli_module.main, ["temporal", "snapshot",
                                       "--at", "2026-01-01T00:00:00Z", "--json"])
         _ok(result)
         data = _json_output(result)
         assert isinstance(data, dict)
 
     def test_distance_requires_both_events(self, runner):
-        result = runner.invoke(main, ["temporal", "distance", "--event1", "ev1"])
+        result = runner.invoke(cli_module.main, ["temporal", "distance", "--event1", "ev1"])
         assert result.exit_code != 0
 
     def test_allen_requires_both_intervals(self, runner):
-        result = runner.invoke(main, ["temporal", "allen",
+        result = runner.invoke(cli_module.main, ["temporal", "allen",
                                       "--interval1", "int1", "--interval2", "int2"])
         assert result.exit_code != 0 or result.exit_code == 0  # depends on import
 
@@ -838,7 +900,7 @@ class TestTemporal:
             (_ for _ in ()).throw(ImportError(n))
             if n.startswith("semantica.kg") else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["temporal", "history", "entity_alice"])
+            result = runner.invoke(cli_module.main, ["temporal", "history", "entity_alice"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -848,13 +910,13 @@ class TestTemporal:
 
 class TestProvenance:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["provenance", "--help"])
+        result = runner.invoke(cli_module.main, ["provenance", "--help"])
         _ok(result)
         for sub in ["lineage", "audit", "export", "check"]:
             assert sub in result.output
 
     def test_lineage_requires_entity(self, runner):
-        result = runner.invoke(main, ["provenance", "lineage"])
+        result = runner.invoke(cli_module.main, ["provenance", "lineage"])
         assert result.exit_code != 0
 
     def test_lineage_import_error_is_clean(self, runner):
@@ -862,12 +924,12 @@ class TestProvenance:
             (_ for _ in ()).throw(ImportError(n))
             if "provenance" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["provenance", "lineage", "entity_alice"])
+            result = runner.invoke(cli_module.main, ["provenance", "lineage", "entity_alice"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_export_dry_run(self, runner):
-        result = runner.invoke(main, ["provenance", "export", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["provenance", "export", "--dry-run"])
         _ok(result)
 
     def test_audit_writes_output(self, runner, monkeypatch):
@@ -878,7 +940,7 @@ class TestProvenance:
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.provenance", fake_prov)
         with runner.isolated_filesystem():
-            result = runner.invoke(main, ["provenance", "audit", "--output", "audit.json"])
+            result = runner.invoke(cli_module.main, ["provenance", "audit", "--output", "audit.json"])
             if result.exit_code == 0:
                 assert os.path.exists("audit.json")
 
@@ -887,7 +949,7 @@ class TestProvenance:
             (_ for _ in ()).throw(ImportError(n))
             if "provenance" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["provenance", "check"])
+            result = runner.invoke(cli_module.main, ["provenance", "check"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -897,13 +959,13 @@ class TestProvenance:
 
 class TestValidate:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["validate", "--help"])
+        result = runner.invoke(cli_module.main, ["validate", "--help"])
         _ok(result)
         for sub in ["shacl", "conflicts", "integrity"]:
             assert sub in result.output
 
     def test_shacl_help(self, runner):
-        result = runner.invoke(main, ["validate", "shacl", "--help"])
+        result = runner.invoke(cli_module.main, ["validate", "shacl", "--help"])
         _ok(result)
         assert "--strictness" in result.output
 
@@ -912,7 +974,7 @@ class TestValidate:
             (_ for _ in ()).throw(ImportError(n))
             if "ontology" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["validate", "shacl"])
+            result = runner.invoke(cli_module.main, ["validate", "shacl"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -921,7 +983,7 @@ class TestValidate:
             detect_conflicts=lambda **kw: {"conflicts": [], "count": 0},
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.conflicts", fake_conf)
-        result = runner.invoke(main, ["validate", "conflicts", "--json"])
+        result = runner.invoke(cli_module.main, ["validate", "conflicts", "--json"])
         _ok(result)
         data = _json_output(result)
         assert isinstance(data, dict)
@@ -931,12 +993,12 @@ class TestValidate:
             (_ for _ in ()).throw(ImportError(n))
             if n.startswith("semantica.kg") else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["validate", "integrity"])
+            result = runner.invoke(cli_module.main, ["validate", "integrity"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_strictness_choices(self, runner):
-        result = runner.invoke(main, ["validate", "shacl", "--help"])
+        result = runner.invoke(cli_module.main, ["validate", "shacl", "--help"])
         for s in ["strict", "moderate", "lenient"]:
             assert s in result.output
 
@@ -946,52 +1008,52 @@ class TestValidate:
 
 class TestOntology:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["ontology", "--help"])
+        result = runner.invoke(cli_module.main, ["ontology", "--help"])
         _ok(result)
         for sub in ["generate", "import", "validate", "shacl", "skos",
                     "align", "health", "version"]:
             assert sub in result.output
 
     def test_generate_dry_run(self, runner):
-        result = runner.invoke(main, ["ontology", "generate", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["ontology", "generate", "--dry-run"])
         _ok(result)
 
     def test_generate_json_dry_run(self, runner):
-        result = runner.invoke(main, ["ontology", "generate", "--dry-run", "--json"])
+        result = runner.invoke(cli_module.main, ["ontology", "generate", "--dry-run", "--json"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
 
     def test_generate_global_json_dry_run(self, runner):
-        result = runner.invoke(main, ["--json", "--dry-run", "ontology", "generate"])
+        result = runner.invoke(cli_module.main, ["--json", "--dry-run", "ontology", "generate"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
 
     def test_import_dry_run(self, runner):
-        result = runner.invoke(main, ["ontology", "import", "schema.ttl", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["ontology", "import", "schema.ttl", "--dry-run"])
         _ok(result)
 
     def test_import_requires_source(self, runner):
-        result = runner.invoke(main, ["ontology", "import"])
+        result = runner.invoke(cli_module.main, ["ontology", "import"])
         assert result.exit_code != 0
 
     def test_skos_group_help(self, runner):
-        result = runner.invoke(main, ["ontology", "skos", "--help"])
+        result = runner.invoke(cli_module.main, ["ontology", "skos", "--help"])
         _ok(result)
         for sub in ["search", "hierarchy"]:
             assert sub in result.output
 
     def test_skos_search_requires_term(self, runner):
-        result = runner.invoke(main, ["ontology", "skos", "search"])
+        result = runner.invoke(cli_module.main, ["ontology", "skos", "search"])
         assert result.exit_code != 0
 
     def test_skos_hierarchy_requires_uri(self, runner):
-        result = runner.invoke(main, ["ontology", "skos", "hierarchy"])
+        result = runner.invoke(cli_module.main, ["ontology", "skos", "hierarchy"])
         assert result.exit_code != 0
 
     def test_align_requires_source_and_target(self, runner):
-        result = runner.invoke(main, ["ontology", "align"])
+        result = runner.invoke(cli_module.main, ["ontology", "align"])
         assert result.exit_code != 0
 
     def test_align_import_error_is_clean(self, runner):
@@ -1004,7 +1066,7 @@ class TestOntology:
                 (_ for _ in ()).throw(ImportError(n))
                 if "ontology" in n else __import__(n, *a, **k)
             )):
-                result = runner.invoke(main, ["ontology", "align",
+                result = runner.invoke(cli_module.main, ["ontology", "align",
                                               "--source", "s.ttl", "--target", "t.ttl"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
@@ -1014,7 +1076,7 @@ class TestOntology:
             (_ for _ in ()).throw(ImportError(n))
             if "ontology" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["ontology", "health"])
+            result = runner.invoke(cli_module.main, ["ontology", "health"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -1024,7 +1086,7 @@ class TestOntology:
 
 class TestExport:
     def test_help_shows_14_formats(self, runner):
-        result = runner.invoke(main, ["export", "--help"])
+        result = runner.invoke(cli_module.main, ["export", "--help"])
         _ok(result)
         for fmt in ["turtle", "parquet", "csv", "graphml", "owl", "arangodb"]:
             assert fmt in result.output
@@ -1032,18 +1094,18 @@ class TestExport:
             assert flag in result.output
 
     def test_dry_run_json(self, runner):
-        result = runner.invoke(main, ["export", "--format", "turtle",
+        result = runner.invoke(cli_module.main, ["export", "--format", "turtle",
                                       "--dry-run", "--json"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
 
     def test_dry_run_text(self, runner):
-        result = runner.invoke(main, ["export", "--format", "csv", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["export", "--format", "csv", "--dry-run"])
         _ok(result, substr="Dry run")
 
     def test_global_dry_run(self, runner):
-        result = runner.invoke(main, ["--dry-run", "--json", "export", "--format", "json"])
+        result = runner.invoke(cli_module.main, ["--dry-run", "--json", "export", "--format", "json"])
         _ok(result)
         data = _json_output(result)
         assert data["dry_run"] is True
@@ -1123,14 +1185,14 @@ class TestExport:
         )
 
         output_path = tmp_path / "export.json"
-        result = runner.invoke(main, ["export", "--format", "json", "--output", str(output_path)])
+        result = runner.invoke(cli_module.main, ["export", "--format", "json", "--output", str(output_path)])
         _ok(result)
         exported = output_path.read_text(encoding="utf-8")
         assert "Alice" in exported
         assert "KNOWS" in exported
 
     def test_invalid_format_fails(self, runner):
-        result = runner.invoke(main, ["export", "--format", "magic"])
+        result = runner.invoke(cli_module.main, ["export", "--format", "magic"])
         assert result.exit_code != 0
 
     def test_import_error_is_clean(self, runner):
@@ -1139,7 +1201,7 @@ class TestExport:
             (_ for _ in ()).throw(ImportError(n))
             if "semantica.export" in n else original_import(n, *a, **k)
         )):
-            result = runner.invoke(main, ["export", "--format", "json"])
+            result = runner.invoke(cli_module.main, ["export", "--format", "json"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -1149,14 +1211,14 @@ class TestExport:
 
 class TestVisualize:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["visualize", "--help"])
+        result = runner.invoke(cli_module.main, ["visualize", "--help"])
         _ok(result)
         for sub in ["kg", "ontology", "embeddings", "temporal", "analytics"]:
             assert sub in result.output
 
     @pytest.mark.parametrize("sub", ["kg", "ontology", "embeddings", "temporal", "analytics"])
     def test_subcommand_help(self, runner, sub):
-        result = runner.invoke(main, ["visualize", sub, "--help"])
+        result = runner.invoke(cli_module.main, ["visualize", sub, "--help"])
         _ok(result)
         for flag in ["--layout", "--format", "--output"]:
             assert flag in result.output
@@ -1167,17 +1229,17 @@ class TestVisualize:
             (_ for _ in ()).throw(ImportError(n))
             if "visualization" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["visualize", sub])
+            result = runner.invoke(cli_module.main, ["visualize", sub])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
     def test_format_choices(self, runner):
-        result = runner.invoke(main, ["visualize", "kg", "--help"])
+        result = runner.invoke(cli_module.main, ["visualize", "kg", "--help"])
         for fmt in ["html", "svg", "png", "pdf"]:
             assert fmt in result.output
 
     def test_layout_choices(self, runner):
-        result = runner.invoke(main, ["visualize", "kg", "--help"])
+        result = runner.invoke(cli_module.main, ["visualize", "kg", "--help"])
         for layout in ["forceatlas2", "spring", "hierarchical"]:
             assert layout in result.output
 
@@ -1187,13 +1249,13 @@ class TestVisualize:
 
 class TestPipeline:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["pipeline", "--help"])
+        result = runner.invoke(cli_module.main, ["pipeline", "--help"])
         _ok(result)
         for sub in ["init", "validate", "run", "status", "stop"]:
             assert sub in result.output
 
     def test_init_dry_run(self, runner):
-        result = runner.invoke(main, ["pipeline", "init", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["pipeline", "init", "--dry-run"])
         _ok(result)
 
     def test_init_creates_file(self, runner, monkeypatch):
@@ -1202,33 +1264,33 @@ class TestPipeline:
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.pipeline", fake_pl)
         with runner.isolated_filesystem():
-            result = runner.invoke(main, ["pipeline", "init",
+            result = runner.invoke(cli_module.main, ["pipeline", "init",
                                           "--template", "rag", "--output", "pl.yaml"])
             _ok(result)
             assert os.path.exists("pl.yaml")
 
     def test_init_template_choices(self, runner):
-        result = runner.invoke(main, ["pipeline", "init", "--help"])
+        result = runner.invoke(cli_module.main, ["pipeline", "init", "--help"])
         for t in ["ingest-extract-kg", "rag", "ontology-build", "decision-track", "full"]:
             assert t in result.output
 
     def test_validate_requires_file(self, runner):
-        result = runner.invoke(main, ["pipeline", "validate"])
+        result = runner.invoke(cli_module.main, ["pipeline", "validate"])
         assert result.exit_code != 0
 
     def test_validate_nonexistent_file_fails(self, runner):
-        result = runner.invoke(main, ["pipeline", "validate", "no_such.yaml"])
+        result = runner.invoke(cli_module.main, ["pipeline", "validate", "no_such.yaml"])
         assert result.exit_code != 0
 
     def test_run_dry_run(self, runner):
         with runner.isolated_filesystem():
             with open("pl.yaml", "w") as f:
                 f.write("steps: []\n")
-            result = runner.invoke(main, ["pipeline", "run", "pl.yaml", "--dry-run"])
+            result = runner.invoke(cli_module.main, ["pipeline", "run", "pl.yaml", "--dry-run"])
             _ok(result)
 
     def test_run_requires_file(self, runner):
-        result = runner.invoke(main, ["pipeline", "run"])
+        result = runner.invoke(cli_module.main, ["pipeline", "run"])
         assert result.exit_code != 0
 
     def test_status_exits_0(self, runner):
@@ -1236,7 +1298,7 @@ class TestPipeline:
             (_ for _ in ()).throw(ImportError(n))
             if "pipeline" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["pipeline", "status"])
+            result = runner.invoke(cli_module.main, ["pipeline", "status"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -1245,7 +1307,7 @@ class TestPipeline:
             (_ for _ in ()).throw(ImportError(n))
             if "pipeline" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["pipeline", "stop"])
+            result = runner.invoke(cli_module.main, ["pipeline", "stop"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -1255,51 +1317,51 @@ class TestPipeline:
 
 class TestStore:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["store", "--help"])
+        result = runner.invoke(cli_module.main, ["store", "--help"])
         _ok(result)
         for sub in ["list", "connect", "stats", "migrate", "flush"]:
             assert sub in result.output
 
     def test_list_json_empty_config(self, runner):
-        result = runner.invoke(main, ["store", "list", "--json"])
+        result = runner.invoke(cli_module.main, ["store", "list", "--json"])
         _ok(result)
         data = _json_output(result)
         assert isinstance(data, dict)
 
     def test_list_table(self, runner):
-        result = runner.invoke(main, ["store", "list"])
+        result = runner.invoke(cli_module.main, ["store", "list"])
         _ok(result)
 
     def test_connect_requires_backend(self, runner):
-        result = runner.invoke(main, ["store", "connect"])
+        result = runner.invoke(cli_module.main, ["store", "connect"])
         assert result.exit_code != 0
 
     def test_connect_reports_status(self, runner):
-        result = runner.invoke(main, ["store", "connect", "--backend", "neo4j"])
+        result = runner.invoke(cli_module.main, ["store", "connect", "--backend", "neo4j"])
         _ok(result)
 
     def test_migrate_dry_run(self, runner):
-        result = runner.invoke(main, ["store", "migrate",
+        result = runner.invoke(cli_module.main, ["store", "migrate",
                                       "--from", "faiss", "--to", "qdrant", "--dry-run"])
         _ok(result)
 
     def test_migrate_requires_from_and_to(self, runner):
-        result = runner.invoke(main, ["store", "migrate", "--from", "faiss"])
+        result = runner.invoke(cli_module.main, ["store", "migrate", "--from", "faiss"])
         assert result.exit_code != 0
 
     def test_flush_requires_confirm(self, runner):
-        result = runner.invoke(main, ["store", "flush"])
+        result = runner.invoke(cli_module.main, ["store", "flush"])
         assert result.exit_code != 0
         assert "confirm" in result.output.lower() or result.exit_code == 2
 
     def test_flush_with_confirm(self, runner, monkeypatch):
         fake_vs = _fake_module(delete_vectors=lambda **kw: None)
         monkeypatch.setitem(__import__("sys").modules, "semantica.vector_store", fake_vs)
-        result = runner.invoke(main, ["store", "flush", "--confirm"])
+        result = runner.invoke(cli_module.main, ["store", "flush", "--confirm"])
         _ok(result)
 
     def test_stats_requires_backend(self, runner):
-        result = runner.invoke(main, ["store", "stats"])
+        result = runner.invoke(cli_module.main, ["store", "stats"])
         assert result.exit_code != 0
 
 
@@ -1308,13 +1370,13 @@ class TestStore:
 
 class TestBackup:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["backup", "--help"])
+        result = runner.invoke(cli_module.main, ["backup", "--help"])
         _ok(result)
         for sub in ["info", "create", "sync", "restore", "schedule"]:
             assert sub in result.output
 
     def test_info_json_empty_config(self, runner):
-        result = runner.invoke(main, ["backup", "info", "--json"])
+        result = runner.invoke(cli_module.main, ["backup", "info", "--json"])
         _ok(result)
         data = _json_output(result)
         assert isinstance(data, list)
@@ -1328,7 +1390,7 @@ class TestBackup:
                     "  backend: neo4j\n"
                     "  uri: bolt://user:secret123@host:7687\n"
                 )
-            result = runner.invoke(main, ["--config", "cfg.yaml", "backup", "info"])
+            result = runner.invoke(cli_module.main, ["--config", "cfg.yaml", "backup", "info"])
         _ok(result)
         assert "secret123" not in result.output
 
@@ -1340,7 +1402,7 @@ class TestBackup:
                     "  backend: neo4j\n"
                     "  uri: bolt://user:secret123@host:7687\n"
                 )
-            result = runner.invoke(main, ["--config", "cfg.yaml", "backup", "info"])
+            result = runner.invoke(cli_module.main, ["--config", "cfg.yaml", "backup", "info"])
         _ok(result)
         assert "neo4j" in result.output
         assert "graph" in result.output
@@ -1350,13 +1412,13 @@ class TestBackup:
             with open("cfg.yaml", "w") as f:
                 # vector_store is the correct key in Config
                 f.write("vector_store:\n  backend: pinecone\n  host: x\n")
-            result = runner.invoke(main, ["--config", "cfg.yaml", "backup", "info"])
+            result = runner.invoke(cli_module.main, ["--config", "cfg.yaml", "backup", "info"])
         _ok(result)
         assert "export" in result.output
 
     def test_create_dry_run(self, runner):
         with runner.isolated_filesystem():
-            result = runner.invoke(main, ["backup", "create", "backup.tar.gz", "--dry-run"])
+            result = runner.invoke(cli_module.main, ["backup", "create", "backup.tar.gz", "--dry-run"])
             _ok(result)
 
     def test_create_unencrypted_with_config_requires_confirm(self, runner):
@@ -1364,7 +1426,7 @@ class TestBackup:
             with open("cfg.yaml", "w") as f:
                 f.write("graph_db:\n  backend: neo4j\n  uri: bolt://localhost\n")
             result = runner.invoke(
-                main,
+                cli_module.main,
                 ["--config", "cfg.yaml", "backup", "create", "out.tar.gz"],
                 input="n\n",
             )
@@ -1375,7 +1437,7 @@ class TestBackup:
             with open("cfg.yaml", "w") as f:
                 f.write("graph_db:\n  backend: neo4j\n  uri: bolt://localhost\n")
             result = runner.invoke(
-                main,
+                cli_module.main,
                 ["--config", "cfg.yaml", "backup", "create", "out.tar.gz",
                  "--strip-config", "--quiet"],
             )
@@ -1383,7 +1445,7 @@ class TestBackup:
 
     def test_create_dry_run_json(self, runner):
         # backup create has no per-command --json; use global --json
-        result = runner.invoke(main, ["--json", "backup", "create", "backup.tar.gz",
+        result = runner.invoke(cli_module.main, ["--json", "backup", "create", "backup.tar.gz",
                                       "--dry-run"])
         _ok(result)
         data = _json_output(result)
@@ -1396,7 +1458,7 @@ class TestBackup:
             try:
                 os.chmod("keyfile.txt", stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
                 result = runner.invoke(
-                    main,
+                    cli_module.main,
                     ["backup", "create", "out.tar.gz",
                      "--keyfile", "keyfile.txt", "--encrypt"],
                 )
@@ -1407,19 +1469,19 @@ class TestBackup:
 
     def test_create_keyfile_nonexistent_rejected(self, runner):
         result = runner.invoke(
-            main,
+            cli_module.main,
             ["backup", "create", "out.tar.gz",
              "--keyfile", "no_such_keyfile.txt", "--encrypt"],
         )
         assert result.exit_code != 0
 
     def test_sync_dry_run(self, runner):
-        result = runner.invoke(main, ["backup", "sync", "/tmp/bk", "--dry-run"])
+        result = runner.invoke(cli_module.main, ["backup", "sync", "/tmp/bk", "--dry-run"])
         _ok(result)
 
     def test_sync_creates_directory(self, runner):
         with runner.isolated_filesystem():
-            result = runner.invoke(main, ["backup", "sync", "sync_dest"])
+            result = runner.invoke(cli_module.main, ["backup", "sync", "sync_dest"])
             _ok(result)
             assert os.path.isdir("sync_dest")
 
@@ -1427,38 +1489,38 @@ class TestBackup:
         with runner.isolated_filesystem():
             with open("backup.tar.gz", "w") as f:
                 f.write("")
-            result = runner.invoke(main, ["backup", "restore", "backup.tar.gz", "--dry-run"])
+            result = runner.invoke(cli_module.main, ["backup", "restore", "backup.tar.gz", "--dry-run"])
             _ok(result)
 
     def test_restore_requires_source(self, runner):
-        result = runner.invoke(main, ["backup", "restore"])
+        result = runner.invoke(cli_module.main, ["backup", "restore"])
         assert result.exit_code != 0
 
     def test_restore_nonexistent_source_fails(self, runner):
-        result = runner.invoke(main, ["backup", "restore", "no_such_file.tar.gz"])
+        result = runner.invoke(cli_module.main, ["backup", "restore", "no_such_file.tar.gz"])
         assert result.exit_code != 0
 
     def test_schedule_prints_cron(self, runner):
-        result = runner.invoke(main, ["backup", "schedule",
+        result = runner.invoke(cli_module.main, ["backup", "schedule",
                                       "--dest", "/mnt/bk", "--freq", "daily"])
         _ok(result)
         assert "0 2 * * *" in result.output
         assert "/mnt/bk" in result.output
 
     def test_schedule_weekly(self, runner):
-        result = runner.invoke(main, ["backup", "schedule",
+        result = runner.invoke(cli_module.main, ["backup", "schedule",
                                       "--dest", "/mnt/bk", "--freq", "weekly"])
         _ok(result)
         assert "0 2 * * 0" in result.output
 
     def test_schedule_with_encrypt(self, runner):
-        result = runner.invoke(main, ["backup", "schedule",
+        result = runner.invoke(cli_module.main, ["backup", "schedule",
                                       "--dest", "/mnt/bk", "--encrypt"])
         _ok(result)
         assert "--encrypt" in result.output
 
     def test_schedule_json(self, runner):
-        result = runner.invoke(main, ["--json", "backup", "schedule",
+        result = runner.invoke(cli_module.main, ["--json", "backup", "schedule",
                                       "--dest", "/mnt/bk"])
         _ok(result)
         data = json.loads(result.output.strip())
@@ -1470,13 +1532,13 @@ class TestBackup:
 
 class TestServer:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["server", "--help"])
+        result = runner.invoke(cli_module.main, ["server", "--help"])
         _ok(result)
         for sub in ["start", "stop", "status"]:
             assert sub in result.output
 
     def test_start_help(self, runner):
-        result = runner.invoke(main, ["server", "start", "--help"])
+        result = runner.invoke(cli_module.main, ["server", "start", "--help"])
         _ok(result)
         for flag in ["--port", "--workers", "--reload", "--host"]:
             assert flag in result.output
@@ -1485,7 +1547,7 @@ class TestServer:
         mock_proc = MagicMock()
         mock_proc.pid = 12345
         with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
-            result = runner.invoke(main, ["server", "start", "--port", "9000"])
+            result = runner.invoke(cli_module.main, ["server", "start", "--port", "9000"])
         _ok(result)
         mock_popen.assert_called_once()
         call_args = mock_popen.call_args[0][0]
@@ -1495,14 +1557,14 @@ class TestServer:
         mock_proc = MagicMock()
         mock_proc.pid = 12346
         with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
-            result = runner.invoke(main, ["server", "start", "--reload"])
+            result = runner.invoke(cli_module.main, ["server", "start", "--reload"])
         _ok(result)
         call_args = mock_popen.call_args[0][0]
         assert "--reload" in call_args
 
     def test_stop_when_not_running(self, runner, tmp_path, monkeypatch):
         monkeypatch.setattr(cli_module, "_read_pid", lambda n: None)
-        result = runner.invoke(main, ["server", "stop"])
+        result = runner.invoke(cli_module.main, ["server", "stop"])
         _ok(result)
         assert "not running" in result.output.lower()
 
@@ -1512,19 +1574,19 @@ class TestServer:
             exists=lambda: True, unlink=lambda missing_ok=False: None
         ))
         with patch("os.kill") as mock_kill:
-            result = runner.invoke(main, ["server", "stop"])
+            result = runner.invoke(cli_module.main, ["server", "stop"])
         _ok(result)
         mock_kill.assert_called_once()
 
     def test_status_when_stopped(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "_read_pid", lambda n: None)
-        result = runner.invoke(main, ["server", "status"])
+        result = runner.invoke(cli_module.main, ["server", "status"])
         _ok(result)
         assert "stopped" in result.output
 
     def test_status_json(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "_read_pid", lambda n: None)
-        result = runner.invoke(main, ["server", "status", "--json"])
+        result = runner.invoke(cli_module.main, ["server", "status", "--json"])
         _ok(result)
         data = _json_output(result)
         assert data["service"] == "server"
@@ -1536,34 +1598,49 @@ class TestServer:
 
 class TestExplorer:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["explorer", "--help"])
+        result = runner.invoke(cli_module.main, ["explorer", "--help"])
         _ok(result)
         for sub in ["start", "stop", "status", "open"]:
             assert sub in result.output
 
-    def test_start_launches_process(self, runner):
+    def test_start_launches_process(self, runner, monkeypatch):
         mock_proc = MagicMock()
         mock_proc.pid = 22222
+        monkeypatch.setattr(cli_module, "_write_pid", lambda *_args: None)
         with patch("subprocess.Popen", return_value=mock_proc):
-            result = runner.invoke(main, ["explorer", "start", "--port", "5173"])
+            result = runner.invoke(cli_module.main, ["explorer", "start", "--port", "5173"])
         _ok(result)
+
+    def test_start_forwards_api_url_to_child_environment(self, runner, monkeypatch):
+        mock_proc = MagicMock()
+        mock_proc.pid = 22223
+        monkeypatch.setattr(cli_module, "_write_pid", lambda *_args: None)
+        with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+            result = runner.invoke(
+                cli_module.main,
+                ["explorer", "start", "--api-url", "http://localhost:9000"],
+            )
+        _ok(result)
+        assert mock_popen.call_args.kwargs["env"]["SEMANTICA_API_URL"] == (
+            "http://localhost:9000"
+        )
 
     def test_stop_when_not_running(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "_read_pid", lambda n: None)
-        result = runner.invoke(main, ["explorer", "stop"])
+        result = runner.invoke(cli_module.main, ["explorer", "stop"])
         _ok(result)
         assert "not running" in result.output.lower()
 
     def test_status_json(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "_read_pid", lambda n: None)
-        result = runner.invoke(main, ["explorer", "status", "--json"])
+        result = runner.invoke(cli_module.main, ["explorer", "status", "--json"])
         _ok(result)
         data = _json_output(result)
         assert data["service"] == "explorer"
 
     def test_open_calls_webbrowser(self, runner):
         with patch("webbrowser.open") as mock_wb:
-            result = runner.invoke(main, ["explorer", "open", "--port", "5173"])
+            result = runner.invoke(cli_module.main, ["explorer", "open", "--port", "5173"])
         _ok(result)
         mock_wb.assert_called_once_with("http://localhost:5173")
 
@@ -1573,7 +1650,7 @@ class TestExplorer:
 
 class TestMCP:
     def test_group_help(self, runner):
-        result = runner.invoke(main, ["mcp", "--help"])
+        result = runner.invoke(cli_module.main, ["mcp", "--help"])
         _ok(result)
         for sub in ["start", "stop", "status", "list-tools", "call"]:
             assert sub in result.output
@@ -1582,14 +1659,14 @@ class TestMCP:
         mock_proc = MagicMock()
         mock_proc.pid = 33333
         with patch("subprocess.Popen", return_value=mock_proc):
-            result = runner.invoke(main, ["mcp", "start"])
+            result = runner.invoke(cli_module.main, ["mcp", "start"])
         _ok(result)
 
     def test_start_http_includes_port(self, runner):
         mock_proc = MagicMock()
         mock_proc.pid = 33334
         with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
-            result = runner.invoke(main, ["mcp", "start", "--transport", "http",
+            result = runner.invoke(cli_module.main, ["mcp", "start", "--transport", "http",
                                           "--port", "4000"])
         _ok(result)
         call_args = mock_popen.call_args[0][0]
@@ -1597,18 +1674,18 @@ class TestMCP:
 
     def test_stop_when_not_running(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "_read_pid", lambda n: None)
-        result = runner.invoke(main, ["mcp", "stop"])
+        result = runner.invoke(cli_module.main, ["mcp", "stop"])
         _ok(result)
 
     def test_status_json(self, runner, monkeypatch):
         monkeypatch.setattr(cli_module, "_read_pid", lambda n: None)
-        result = runner.invoke(main, ["mcp", "status", "--json"])
+        result = runner.invoke(cli_module.main, ["mcp", "status", "--json"])
         _ok(result)
         data = _json_output(result)
         assert data["service"] == "mcp"
 
     def test_list_tools_shows_tools(self, runner):
-        result = runner.invoke(main, ["mcp", "list-tools"])
+        result = runner.invoke(cli_module.main, ["mcp", "list-tools"])
         _ok(result)
         # Table renders correctly — at minimum the column header is present
         assert "Tool" in result.output or "tool" in result.output.lower()
@@ -1616,23 +1693,23 @@ class TestMCP:
     def test_list_tools_with_mock_shows_known_tools(self, runner, monkeypatch):
         fake_tools = _fake_module(__all__=["extract_entities", "query_graph"])
         monkeypatch.setitem(__import__("sys").modules, "mcp.tools", fake_tools)
-        result = runner.invoke(main, ["mcp", "list-tools"])
+        result = runner.invoke(cli_module.main, ["mcp", "list-tools"])
         _ok(result)
         assert "extract_entities" in result.output
 
     def test_list_tools_json(self, runner):
-        result = runner.invoke(main, ["mcp", "list-tools", "--json"])
+        result = runner.invoke(cli_module.main, ["mcp", "list-tools", "--json"])
         _ok(result)
         data = _json_output(result)
         assert "tools" in data
         assert isinstance(data["tools"], list)
 
     def test_call_requires_tool_name(self, runner):
-        result = runner.invoke(main, ["mcp", "call"])
+        result = runner.invoke(cli_module.main, ["mcp", "call"])
         assert result.exit_code != 0
 
     def test_call_invalid_json_args_fails_cleanly(self, runner):
-        result = runner.invoke(main, ["mcp", "call", "some_tool", "--args", "{bad json}"])
+        result = runner.invoke(cli_module.main, ["mcp", "call", "some_tool", "--args", "{bad json}"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
         assert "Invalid JSON" in result.output
@@ -1642,7 +1719,7 @@ class TestMCP:
             (_ for _ in ()).throw(ImportError(n))
             if n.startswith("mcp") else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["mcp", "call", "extract_entities"])
+            result = runner.invoke(cli_module.main, ["mcp", "call", "extract_entities"])
         assert result.exit_code != 0
         assert "Traceback" not in result.output
 
@@ -1652,23 +1729,23 @@ class TestMCP:
 
 class TestServicesGroup:
     def test_services_group_help_shows_subgroups(self, runner):
-        result = runner.invoke(main, ["services", "--help"])
+        result = runner.invoke(cli_module.main, ["services", "--help"])
         _ok(result)
         for sub in ["server", "explorer", "mcp"]:
             assert sub in result.output
 
     def test_services_server_help(self, runner):
-        result = runner.invoke(main, ["services", "server", "--help"])
+        result = runner.invoke(cli_module.main, ["services", "server", "--help"])
         _ok(result)
         for sub in ["start", "stop", "status"]:
             assert sub in result.output
 
     def test_services_explorer_help(self, runner):
-        result = runner.invoke(main, ["services", "explorer", "--help"])
+        result = runner.invoke(cli_module.main, ["services", "explorer", "--help"])
         _ok(result)
 
     def test_services_mcp_help(self, runner):
-        result = runner.invoke(main, ["services", "mcp", "--help"])
+        result = runner.invoke(cli_module.main, ["services", "mcp", "--help"])
         _ok(result)
 
 
@@ -1678,12 +1755,12 @@ class TestServicesGroup:
 class TestCompletion:
     @pytest.mark.parametrize("shell", ["bash", "zsh", "fish", "powershell"])
     def test_completion_exits_0(self, runner, shell):
-        result = runner.invoke(main, ["completion", shell])
+        result = runner.invoke(cli_module.main, ["completion", shell])
         assert result.exit_code == 0
 
     @pytest.mark.parametrize("shell", ["bash", "zsh", "fish", "powershell"])
     def test_completion_output_not_empty(self, runner, shell):
-        result = runner.invoke(main, ["completion", shell])
+        result = runner.invoke(cli_module.main, ["completion", shell])
         assert result.exit_code == 0
         assert len(result.output.strip()) > 0
 
@@ -1694,12 +1771,12 @@ class TestCompletion:
         ("powershell", "$PROFILE"),
     ])
     def test_completion_mentions_install_path(self, runner, shell, install_path):
-        result = runner.invoke(main, ["completion", shell])
+        result = runner.invoke(cli_module.main, ["completion", shell])
         assert result.exit_code == 0
         assert install_path in result.output
 
     def test_invalid_shell_fails(self, runner):
-        result = runner.invoke(main, ["completion", "csh"])
+        result = runner.invoke(cli_module.main, ["completion", "csh"])
         assert result.exit_code != 0
 
 
@@ -1710,18 +1787,18 @@ class TestGlobalJsonPropagation:
     """--json set at root should trigger JSON output in all subcommands."""
 
     def test_global_json_on_backup_schedule(self, runner):
-        result = runner.invoke(main, ["--json", "backup", "schedule", "--dest", "/d"])
+        result = runner.invoke(cli_module.main, ["--json", "backup", "schedule", "--dest", "/d"])
         _ok(result)
         data = json.loads(result.output.strip())
         assert "cron" in data
 
     def test_global_json_on_store_list(self, runner):
-        result = runner.invoke(main, ["--json", "store", "list"])
+        result = runner.invoke(cli_module.main, ["--json", "store", "list"])
         _ok(result)
         assert json.loads(result.output.strip()) is not None
 
     def test_global_json_on_mcp_list_tools(self, runner):
-        result = runner.invoke(main, ["--json", "mcp", "list-tools"])
+        result = runner.invoke(cli_module.main, ["--json", "mcp", "list-tools"])
         _ok(result)
         data = json.loads(result.output.strip())
         assert "tools" in data
@@ -1734,15 +1811,15 @@ class TestExitCodes:
     """Exit codes must match the spec: 0 success, 1 general, 2 validation."""
 
     def test_success_is_0(self, runner):
-        result = runner.invoke(main, ["info"])
+        result = runner.invoke(cli_module.main, ["info"])
         assert result.exit_code == 0
 
     def test_missing_required_arg_is_2(self, runner):
-        result = runner.invoke(main, ["kg", "build"])
+        result = runner.invoke(cli_module.main, ["kg", "build"])
         assert result.exit_code == 2
 
     def test_missing_required_arg_for_find_path_is_nonzero(self, runner):
-        result = runner.invoke(main, ["kg", "find-path"])
+        result = runner.invoke(cli_module.main, ["kg", "find-path"])
         assert result.exit_code != 0
 
     def test_import_error_is_nonzero(self, runner):
@@ -1750,7 +1827,7 @@ class TestExitCodes:
             (_ for _ in ()).throw(ImportError(n))
             if "deduplication" in n else __import__(n, *a, **k)
         )):
-            result = runner.invoke(main, ["deduplicate"])
+            result = runner.invoke(cli_module.main, ["deduplicate"])
         assert result.exit_code != 0
 
     def test_no_traceback_on_any_error(self, runner):
@@ -1760,7 +1837,7 @@ class TestExitCodes:
             ["export", "--format", "bad"],
             ["mcp", "call", "tool", "--args", "{invalid}"],
         ]:
-            result = runner.invoke(main, argv)
+            result = runner.invoke(cli_module.main, argv)
             assert "Traceback" not in result.output, (
                 f"Traceback found for {argv}: {result.output}"
             )
