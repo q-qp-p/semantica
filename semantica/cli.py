@@ -879,23 +879,27 @@ def extract(
             config = cli_ctx.config.to_dict()
 
             if mode == "triplets":
-                extractor = TripletExtractor(config=config)
+                extractor = TripletExtractor(method=method, **config)
                 result = extractor.extract(text)
 
             elif mode == "relations":
-                ner_extractor = NERExtractor(config=config)
+                ner_extractor = NERExtractor(method=method, **config)
                 entities = ner_extractor.extract(text)
 
-                extractor = RelationExtractor(config=config)
+                extractor = RelationExtractor(method=method, **config)
                 result = extractor.extract(text, entities=entities)
 
             elif mode == "ner":
-                extractor = NERExtractor(config=config)
+                extractor = NERExtractor(method=method, **config)
                 result = extractor.extract(text)
 
             elif mode == "events":
-                extractor = EventDetector(config=config)
+                extractor = EventDetector(method=method, **config)
                 result = extractor.extract(text)
+            elif mode in {"all", "coreference"}:
+                raise click.ClickException(
+                    f"Extraction mode '{mode}' is not yet wired to a runtime extractor."
+                )
 
             else:
                 analyzer = SemanticAnalyzer(config=config)
