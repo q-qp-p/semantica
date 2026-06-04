@@ -18,7 +18,6 @@ import click
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
@@ -828,7 +827,7 @@ def parse_cmd(cli_ctx: CLIContext, file: str, parser: Optional[str], fmt: str) -
             kwargs["parser"] = parser
         try:
             from .parse import parse_document
-            if cli_ctx.quiet or cli_ctx.json_output:
+            if cli_ctx.quiet or cli_ctx.json_output or fmt == "json":
                 result = parse_document(**kwargs)
             else:
                 with console.status(f"[{_DIM}]Parsing {Path(file).name}…[/{_DIM}]", spinner="dots"):

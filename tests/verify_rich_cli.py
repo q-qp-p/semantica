@@ -14,7 +14,6 @@ def _print(s=""):
 
 # Monkey-patch print for this module
 import builtins
-_orig_print = builtins.print
 def _safe_print(*args, **kw):
     sep = kw.get("sep", " ")
     end = kw.get("end", "\n")
@@ -23,7 +22,6 @@ def _safe_print(*args, **kw):
     sys.stdout.buffer.flush()
 builtins.print = _safe_print
 
-from semantica.cli import main
 from click.testing import CliRunner
 from rich.console import Console
 import semantica.cli as cli_mod
@@ -37,7 +35,7 @@ def run(args):
     buf = io.StringIO()
     cli_mod.console = Console(file=buf, no_color=True, width=120)
     r = CliRunner()
-    result = r.invoke(main, args)
+    result = r.invoke(cli_mod.main, args)
     return result.exit_code, buf.getvalue(), result.output
 
 
