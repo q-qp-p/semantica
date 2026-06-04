@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "semantica"
 version = "0.5.0"
-description = "🧠 Semantica - An Open Source Framework for building Semantic Layers and Knowledge Engineering"
+description = "Accountability and context layer for AI agents. Context graphs, decision intelligence, full provenance tracking, and explainable reasoning engines — every AI decision traceable, every output auditable."
 readme = "README.md"
 license = { text = "MIT" }
 
@@ -18,6 +18,7 @@ classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
+  "Intended Audience :: Information Technology",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
@@ -27,13 +28,27 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Text Processing :: Linguistic",
+  "Topic :: Database :: Database Engines/Servers",
   "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 
 keywords = [
-  "semantic-layer", "knowledge-graph", "nlp", "embeddings",
-  "entity-extraction", "relationship-extraction", "rdf", "ontology"
+  "knowledge-graph", "context-graph", "ai-agents", "llm", "decision-intelligence",
+  "provenance", "explainability", "reasoning-engine", "entity-extraction",
+  "relation-extraction", "graph-rag", "knowledge-intelligence", "semantic-layer",
+  "nlp", "embeddings", "ontology", "rdf", "triplet-extraction", "agentic-ai",
+  "knowledge-base", "entity-resolution", "w3c-prov", "audit-trail"
 ]
+
+[project.urls]
+Homepage      = "https://getsemantica.ai"
+Documentation = "https://docs.getsemantica.ai"
+Repository    = "https://github.com/semantica-agi/semantica"
+Changelog     = "https://github.com/semantica-agi/semantica/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/semantica-agi/semantica/issues"
+Discord       = "https://discord.gg/sV34vps5hH"
 
 # ---------------- CORE DEPENDENCIES (SAFE DEFAULT) ----------------
 dependencies = [
@@ -177,6 +192,9 @@ gpu = [
 # ---- Agentic Framework Integrations ----
 agno = ["agno>=1.0.0"]
 
+# ---- File Watching ----
+watch = ["watchdog>=3.0.0"]
+
 # ---- Splitting / Chunking ----
 split-tiktoken = ["tiktoken>=0.5.0"]
 split-community = ["python-louvain>=0.16"]
@@ -214,8 +232,8 @@ explorer-lite = [
 
 # Everything (cross-platform — gpu excluded; install semantica[gpu] separately on Linux)
 all = [
-  "semantica[dev,viz,infra,cloud,monitoring,llm-all,models-huggingface,split-all,graph-all,vectorstore-all,parse-docling,ingest-parquet,explorer]",
-  "semantica[dev,viz,infra,cloud,monitoring,llm-all,models-huggingface,split-all,graph-all,vectorstore-all,parse-docling,ingest-parquet,agno]"
+  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,vectorstore-all,parse-docling,ingest-parquet,explorer]",
+  "semantica[dev,viz,infra,cloud,monitoring,watch,llm-all,models-huggingface,split-all,graph-all,vectorstore-all,parse-docling,ingest-parquet,agno]"
 ]
 
 # ---------------- ENTRYPOINTS ----------------
