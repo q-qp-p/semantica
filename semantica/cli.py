@@ -8,6 +8,7 @@ enabling users to interact with the framework via terminal commands.
 import json
 import os
 import sys
+import time
 
 # Reconfigure stdout/stderr to UTF-8 on Windows before any other import
 # captures sys.stdout (Rich, Click). This prevents UnicodeEncodeError from
@@ -18,7 +19,7 @@ if sys.platform == "win32":
     if sys.stderr is not None and hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -28,6 +29,7 @@ import click
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
@@ -67,6 +69,7 @@ class CLIContext:
     dry_run_global: bool = False
     store_backend: Optional[str] = None
     vector_store_backend: Optional[str] = None
+    _start: float = field(default_factory=time.perf_counter)
 
 
 def _require_ctx(cli_ctx: Optional[CLIContext]) -> CLIContext:
@@ -83,16 +86,40 @@ def _require_ctx(cli_ctx: Optional[CLIContext]) -> CLIContext:
     return cli_ctx
 
 
+_ERROR_HINTS: Dict[type, str] = {
+    ConnectionRefusedError: "run 'semantica doctor' to check backend connectivity",
+    FileNotFoundError:      "check that the path exists and is readable",
+    PermissionError:        "check file and directory permissions",
+    ImportError:            "install the missing extras: pip install semantica[…]",
+    TimeoutError:           "the backend may be overloaded — retry or increase timeout in config",
+}
+
+
+def _show_error_card(title: str, detail: str, hint: Optional[str] = None) -> None:
+    body = f"[bold]{title}[/bold]\n[{_DIM}]{detail}[/{_DIM}]"
+    if hint:
+        body += f"\n\n[{_KEY}]→[/{_KEY}] [{_DIM}]{hint}[/{_DIM}]"
+    console.print(
+        Panel(body, title="[bold red] Error [/bold red]", border_style="red", padding=(0, 2))
+    )
+
+
 def _run_with_error_handling(action: Callable[[], None]) -> None:
-    """Run a CLI action with consistent user-facing error formatting."""
+    """Run a CLI action with Rich error cards on failure."""
     try:
         action()
-    except click.ClickException:
-        raise
+    except click.ClickException as exc:
+        _show_error_card(type(exc).__name__, exc.format_message())
+        raise SystemExit(exc.exit_code)
     except SemanticaError as exc:
-        raise click.ClickException(str(exc)) from exc
+        cause = exc.__cause__
+        hint = _ERROR_HINTS.get(type(cause)) if cause else None
+        _show_error_card("Semantica error", str(exc), hint=hint)
+        raise SystemExit(1)
     except Exception as exc:
-        raise click.ClickException(f"Unexpected error: {exc}") from exc
+        hint = _ERROR_HINTS.get(type(exc), "run with --log-level DEBUG for a full traceback")
+        _show_error_card(type(exc).__name__, str(exc), hint=hint)
+        raise SystemExit(1)
 
 
 def _load_config_data(file_path: Path) -> Dict[str, Any]:
@@ -217,12 +244,28 @@ def _run_build(cli_ctx: CLIContext, sources: Sequence[str]) -> None:
     framework = _get_framework(cli_ctx)
     if cli_ctx.quiet or cli_ctx.json_output:
         result = framework.build_knowledge_base(sources=list(sources))
-    else:
+    elif len(sources) == 1:
         with console.status(
-            f"[{_DIM}]Building knowledge base from {len(sources)} source(s)…[/{_DIM}]",
+            f"[{_DIM}]Building knowledge base from {Path(sources[0]).name}…[/{_DIM}]",
             spinner="dots",
         ):
             result = framework.build_knowledge_base(sources=list(sources))
+    else:
+        result: Dict[str, Any] = {}
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[{task.description}]", style=_DIM),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("waiting", total=len(sources))
+            for src in sources:
+                progress.update(task, description=Path(src).name)
+                result = framework.build_knowledge_base(sources=[src])
+                progress.advance(task)
 
     stats = result.get("statistics", {}) if isinstance(result, dict) else {}
     processed = stats.get("sources_processed")
@@ -285,14 +328,14 @@ _BANNER = (
 )
 
 _HELP_SECTIONS: List[Tuple[str, List[str]]] = [
-    ("📥 Data Ingestion",   ["ingest", "parse", "split", "normalize"]),
+    ("📥 Data Ingestion",   ["ingest", "watch", "parse", "split", "normalize"]),
     ("🧠 Intelligence",     ["extract", "deduplicate", "reason", "decision", "temporal"]),
     ("🕸️  Knowledge Graph", ["kg"]),
     ("📊 Analytics",        ["embed", "validate", "ontology", "provenance"]),
     ("📤 Export & Viz",     ["export", "visualize"]),
     ("⚙️  Infrastructure",  ["store", "backup", "pipeline", "config"]),
     ("🖥️  Services",        ["server", "explorer", "mcp"]),
-    ("🛠️  Tools",           ["info", "shell", "completion"]),
+    ("🛠️  Tools",           ["init", "doctor", "changelog", "info", "shell", "completion"]),
 ]
 
 
@@ -633,6 +676,320 @@ def shell(ctx: click.Context) -> None:
             _warn(cli_ctx, f"Error: {exc}")
 
 
+@main.command()
+@click.option("--json", "local_json", is_flag=True, default=False)
+@click.pass_obj
+def changelog(cli_ctx: CLIContext, local_json: bool) -> None:
+    """Show release notes and check for a newer version."""
+    import urllib.request
+    import urllib.error
+
+    cli_ctx = _require_ctx(cli_ctx)
+
+    def _action() -> None:
+        api = "https://api.github.com/repos/semantica-agi/semantica/releases/latest"
+        try:
+            req = urllib.request.Request(api, headers={"Accept": "application/vnd.github+json"})
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                data = json.loads(resp.read())
+        except urllib.error.URLError:
+            _warn(cli_ctx, "Could not reach GitHub — check your internet connection.")
+            return
+
+        tag: str = data.get("tag_name", "unknown")
+        body: str = data.get("body", "").strip()
+        html_url: str = data.get("html_url", "")
+        latest = tag.lstrip("v")
+        current = __version__
+
+        if _is_json(cli_ctx, local_json):
+            _jecho({"current": current, "latest": latest, "url": html_url, "notes": body})
+            return
+
+        up_to_date = latest == current
+        status = (
+            f"[{_SUCCESS}]You are on the latest version ({current})[/{_SUCCESS}]"
+            if up_to_date
+            else f"[{_WARN_STY}]Update available: {current} → {latest}[/{_WARN_STY}]\n"
+                 f"[{_DIM}]pip install --upgrade semantica[/{_DIM}]"
+        )
+        console.print(
+            Panel(
+                Text.from_markup(
+                    f"[{_BRAND}]Semantica {tag}[/{_BRAND}]\n\n"
+                    f"{body}\n\n"
+                    f"{status}"
+                ),
+                title="[bold]Changelog[/bold]",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
+        if html_url and not up_to_date:
+            console.print(f"  [{_DIM}]Full notes: {html_url}[/{_DIM}]")
+
+    _run_with_error_handling(_action)
+
+
+@main.command()
+@click.option("--json", "local_json", is_flag=True, default=False)
+@click.pass_obj
+def doctor(cli_ctx: CLIContext, local_json: bool) -> None:
+    """Run a health check on all Semantica components and backends."""
+    import importlib.metadata
+    cli_ctx = _require_ctx(cli_ctx)
+
+    Check = Tuple[str, str, str, Optional[str]]  # label, status, note, hint
+
+    def _check(label: str, fn: "Callable[[], str]", hint: Optional[str] = None) -> Check:
+        try:
+            note = fn()
+            return label, "ok", note, None
+        except Exception as exc:
+            return label, "fail", str(exc), hint
+
+    def _action() -> None:
+        checks: List[Check] = []
+
+        # Python version
+        pv = sys.version_info
+        checks.append(("Python", "ok" if pv >= (3, 8) else "fail",
+                        f"{pv.major}.{pv.minor}.{pv.micro}",
+                        "upgrade to Python 3.8+" if pv < (3, 8) else None))
+
+        # Semantica version
+        checks.append(("semantica", "ok", __version__, None))
+
+        # Rich version
+        def _rich_ver() -> str:
+            return importlib.metadata.version("rich")
+        checks.append(_check("rich", _rich_ver))
+
+        # Graph store reachability
+        def _graph() -> str:
+            cfg = cli_ctx.config.to_dict()
+            backend = cli_ctx.store_backend or cfg.get("graph_db", {}).get("backend", "memory")
+            if backend == "memory":
+                return "memory (always available)"
+            gs = _get_graph_store(cli_ctx)
+            gs.ping() if hasattr(gs, "ping") else gs.connect()
+            return f"{backend} reachable"
+        checks.append(_check("Graph store", _graph, hint="run 'semantica store list' to see configured backends"))
+
+        # Vector store
+        def _vector() -> str:
+            cfg = cli_ctx.config.to_dict()
+            backend = cli_ctx.vector_store_backend or cfg.get("vector_store", {}).get("backend", "faiss")
+            if backend == "faiss":
+                import faiss  # noqa: F401
+            return f"{backend} importable"
+        checks.append(_check("Vector store", _vector, hint="pip install semantica[vectorstore-…]"))
+
+        # LLM provider keys
+        for provider, var in [("OpenAI", "OPENAI_API_KEY"), ("Anthropic", "ANTHROPIC_API_KEY"),
+                               ("Groq", "GROQ_API_KEY")]:
+            val = os.environ.get(var, "")
+            if val:
+                checks.append((provider, "ok", f"{var} set ({val[:8]}…)", None))
+            else:
+                checks.append((provider, "warn", f"{var} not set", f"export {var}=…"))
+
+        # Config file
+        if cli_ctx.config_path:
+            ok = Path(cli_ctx.config_path).is_file()
+            checks.append(("Config file", "ok" if ok else "fail",
+                            cli_ctx.config_path, None))
+        else:
+            checks.append(("Config file", "warn", "using defaults (no --config)", "run 'semantica init'"))
+
+        # Log directory writability
+        def _logdir() -> str:
+            p = Path.cwd() / "semantica.log"
+            p.touch(); p.unlink()
+            return "current directory writable"
+        checks.append(_check("Log directory", _logdir))
+
+        if _is_json(cli_ctx, local_json):
+            _jecho([{"check": lbl, "status": st, "note": note, "hint": hint}
+                    for lbl, st, note, hint in checks])
+            return
+
+        tbl = Table(box=_TABLE_BOX, show_edge=False, padding=(0, 2))
+        tbl.add_column("Check",  style=_KEY, no_wrap=True, min_width=16)
+        tbl.add_column("Status", no_wrap=True, min_width=6)
+        tbl.add_column("Note",   style=_DIM)
+        tbl.add_column("Hint",   style=_DIM)
+
+        icons = {"ok": f"[{_SUCCESS}] ✓[/{_SUCCESS}]",
+                 "warn": f"[{_WARN_STY}] ⚠[/{_WARN_STY}]",
+                 "fail": "[bold red] ✗[/bold red]"}
+
+        errors = warns = 0
+        for lbl, st, note, hint in checks:
+            tbl.add_row(lbl, icons.get(st, st), note or "", hint or "")
+            if st == "fail":
+                errors += 1
+            elif st == "warn":
+                warns += 1
+
+        console.print()
+        console.print(tbl)
+        console.print()
+        summary = (f"[{_SUCCESS}]All checks passed[/{_SUCCESS}]" if not errors and not warns
+                   else f"[bold red]{errors} error(s)[/bold red]  [{_WARN_STY}]{warns} warning(s)[/{_WARN_STY}]")
+        console.print(f"  {summary}")
+        console.print()
+
+    _run_with_error_handling(_action)
+
+
+@main.command(name="init")
+@click.option("--force", is_flag=True, default=False, help="Overwrite existing config.")
+@click.pass_obj
+def init_cmd(cli_ctx: CLIContext, force: bool) -> None:
+    """Interactive wizard to create ~/.semantica/config.yaml."""
+    cli_ctx = _require_ctx(cli_ctx)
+
+    def _action() -> None:
+        config_dir = Path.home() / ".semantica"
+        config_file = config_dir / "config.yaml"
+
+        if config_file.exists() and not force:
+            _warn(cli_ctx, f"Config already exists at {config_file}  (use --force to overwrite)")
+            return
+
+        if not cli_ctx.quiet:
+            console.print(
+                Panel(
+                    Text.from_markup(
+                        f"[{_BRAND}]Semantica Setup Wizard[/{_BRAND}]\n"
+                        f"[{_DIM}]Creates ~/.semantica/config.yaml  •  press Ctrl+C to abort[/{_DIM}]"
+                    ),
+                    box=box.ROUNDED, padding=(0, 2), expand=False,
+                )
+            )
+            console.print()
+
+        graph_backend = click.prompt(
+            "  Graph store backend",
+            type=click.Choice(["memory", "neo4j", "falkordb", "neptune"], case_sensitive=False),
+            default="memory",
+        )
+        vector_backend = click.prompt(
+            "  Vector store backend",
+            type=click.Choice(["faiss", "qdrant", "pinecone", "weaviate", "milvus"], case_sensitive=False),
+            default="faiss",
+        )
+        llm_provider = click.prompt(
+            "  LLM provider",
+            type=click.Choice(["none", "openai", "anthropic", "groq", "ollama"], case_sensitive=False),
+            default="none",
+        )
+
+        cfg: Dict[str, Any] = {
+            "graph_db":     {"backend": graph_backend},
+            "vector_store": {"backend": vector_backend},
+        }
+
+        if llm_provider != "none":
+            env_var = f"{llm_provider.upper()}_API_KEY"
+            existing = os.environ.get(env_var, "")
+            prompt_str = f"  {env_var}" + (f" [{existing[:8]}…]" if existing else "")
+            key = click.prompt(prompt_str, default=existing, hide_input=True, show_default=False)
+            if key:
+                cfg["llm"] = {"provider": llm_provider, "api_key_env": env_var}
+                os.environ[env_var] = key
+
+        config_dir.mkdir(parents=True, exist_ok=True)
+        with config_file.open("w", encoding="utf-8") as fh:
+            yaml.dump(cfg, fh, default_flow_style=False, sort_keys=False)
+
+        console.print()
+        _ok(cli_ctx, f"Config written to {config_file}")
+        _info(cli_ctx, "Run 'semantica doctor' to verify your setup.")
+
+    _run_with_error_handling(_action)
+
+
+@main.command(name="watch")
+@click.argument("path", default=".", type=click.Path(exists=True))
+@click.option("--type", "ingestor_type", default=None, help="Force ingestor type.")
+@click.option("--store", "store_override", default=None, help="Target graph backend.")
+@click.option("--patterns", default="*.pdf,*.docx,*.txt,*.csv,*.json",
+              show_default=True, help="Comma-separated glob patterns to match.")
+@click.pass_obj
+def watch_cmd(cli_ctx: CLIContext, path: str, ingestor_type: Optional[str],
+              store_override: Optional[str], patterns: str) -> None:
+    """Watch a directory and auto-ingest new or changed files.
+
+    \b
+    Requires: pip install semantica[watch]
+    Examples:
+      semantica watch ./data/contracts/
+      semantica watch ./reports/ --patterns "*.pdf,*.docx"
+    """
+    try:
+        from watchdog.observers import Observer
+        from watchdog.events import FileSystemEventHandler, FileSystemEvent
+    except ImportError:
+        raise click.ClickException(
+            "watchdog is required — install it with: pip install semantica[watch]"
+        )
+
+    cli_ctx = _require_ctx(cli_ctx)
+    watch_path = Path(path).resolve()
+    pat_list = [p.strip() for p in patterns.split(",")]
+
+    class _Handler(FileSystemEventHandler):
+        def on_created(self, event: "FileSystemEvent") -> None:
+            self._handle(event)
+
+        def on_modified(self, event: "FileSystemEvent") -> None:
+            self._handle(event)
+
+        def _handle(self, event: "FileSystemEvent") -> None:
+            if event.is_directory:
+                return
+            p = Path(str(event.src_path))
+            if not any(p.match(pat) for pat in pat_list):
+                return
+            _info(cli_ctx, f"Detected {p.name} — ingesting…")
+            try:
+                from .ingest import ingest as _ingest
+                kwargs: Dict[str, Any] = {}
+                if ingestor_type:
+                    kwargs["source_type"] = ingestor_type
+                if store_override or cli_ctx.store_backend:
+                    kwargs["store"] = store_override or cli_ctx.store_backend
+                _ingest(str(p), **kwargs)
+                _ok(cli_ctx, f"{p.name}")
+            except Exception as exc:
+                _warn(cli_ctx, f"{p.name}: {exc}")
+
+    if not cli_ctx.quiet:
+        console.print(
+            Panel(
+                Text.from_markup(
+                    f"[{_BRAND}]Watching[/{_BRAND}] {watch_path}\n"
+                    f"[{_DIM}]Patterns: {patterns}  •  Ctrl+C to stop[/{_DIM}]"
+                ),
+                box=box.ROUNDED, padding=(0, 2), expand=False,
+            )
+        )
+
+    observer = Observer()
+    observer.schedule(_Handler(), str(watch_path), recursive=True)
+    observer.start()
+    try:
+        while observer.is_alive():
+            observer.join(timeout=1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+    if not cli_ctx.quiet:
+        console.print(f"\n[{_DIM}]Stopped watching.[/{_DIM}]")
+
+
 @kg.command("build")
 @click.option("--source", "-s", multiple=True, help="Data sources to process.")
 @click.option(
@@ -705,7 +1062,8 @@ def _jecho(data: Any) -> None:
 
 def _ok(cli_ctx: CLIContext, text: str) -> None:
     if not cli_ctx.quiet:
-        console.print(f"[{_SUCCESS}] ✓[/{_SUCCESS}] {text}")
+        elapsed = time.perf_counter() - cli_ctx._start
+        console.print(f"[{_SUCCESS}] ✓[/{_SUCCESS}] {text}  [{_DIM}]{elapsed:.1f}s[/{_DIM}]")
 
 
 def _info(cli_ctx: CLIContext, text: str) -> None:
@@ -1006,7 +1364,15 @@ def ingest(
             kwargs["output"] = output
         try:
             from .ingest import ingest as _ingest
-            result = _ingest(source, **kwargs)
+            label = Path(source).name if Path(source).exists() else source
+            if cli_ctx.quiet or cli_ctx.json_output:
+                result = _ingest(source, **kwargs)
+            else:
+                with console.status(
+                    f"[{_DIM}]Ingesting {label}{'  (recursive)' if recursive else ''}…[/{_DIM}]",
+                    spinner="dots",
+                ):
+                    result = _ingest(source, **kwargs)
         except ImportError as exc:
             raise click.ClickException(f"Ingest module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):
