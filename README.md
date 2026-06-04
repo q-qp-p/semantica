@@ -97,8 +97,11 @@ Every capability in Semantica is available from the terminal — no Python code 
 
 ```bash
 pip install semantica
-semantica --help
+semantica          # startup dashboard — version, graph/vector store status, quick-start hints
+semantica --help   # grouped command reference with Quick Start examples
 ```
+
+The terminal interface is built on [Rich](https://github.com/Textualize/rich): grouped `--help` sections, a startup dashboard on bare `semantica`, status spinners and per-source progress bars on long operations, structured error cards with actionable hints, and elapsed time on every success line. All output degrades gracefully to plain ASCII with `--no-color` or when piped.
 
 ### Global Flags
 
@@ -122,7 +125,11 @@ All commands accept these flags anywhere on the command line:
 # Ingest files, URLs, databases, or streams into the graph
 semantica ingest ./reports/q1.pdf
 semantica ingest ./data/ --recursive --format csv
-semantica ingest https://feeds.example.com/news --type feed --watch
+semantica ingest https://feeds.example.com/news --type feed
+
+# Watch a directory and auto-ingest new or changed files
+semantica watch ./data/contracts/
+semantica watch ./reports/ --patterns "*.pdf,*.docx" --store neo4j
 
 # Parse a document into structured content
 semantica parse contract.pdf | jq '.entities'
@@ -267,6 +274,30 @@ semantica mcp list-tools
 semantica mcp call extract_entities --args '{"text": "Alice works at Acme Corp"}'
 ```
 
+### Developer Tools
+
+```bash
+# First-run wizard — creates ~/.semantica/config.yaml interactively
+semantica init
+semantica init --force   # overwrite existing config
+
+# Health check — Python, semantica, graph/vector store, LLM keys, config, log dir
+semantica doctor
+semantica doctor --json  # machine-readable results
+
+# Release notes and upgrade check
+semantica changelog
+
+# Interactive REPL — run any subcommand without the 'semantica' prefix
+semantica shell
+# semantica> kg stats
+# semantica> reason run --engine rete
+# semantica> exit
+
+# Show version, component status, and config
+semantica info
+```
+
 ### Shell Completion
 
 ```bash
@@ -310,6 +341,20 @@ semantica completion powershell >> $PROFILE
 - **Entity Search Panel** — 320 ms debounced search across all loaded ontologies with type filters
 - **SKOS Vocabulary Manager** — hierarchical concept browser with recursive tree and full SKOS annotation detail
 - **16 new backend endpoints** under `/api/ontology`
+
+### 🖥️ Modern CLI Experience
+
+- **Startup dashboard** — `semantica` with no args shows an ASCII art banner, graph/vector store status, and quick-start hints
+- **Grouped `--help`** — commands organised into 8 labelled sections (Data Ingestion, Intelligence, Knowledge Graph, Analytics, Export & Viz, Infrastructure, Services, Tools) with a Quick Start block
+- **`semantica doctor`** — health check across Python, backends, LLM keys, config, and log directory with ✓/⚠/✗ per item
+- **`semantica init`** — interactive wizard that writes `~/.semantica/config.yaml` (graph backend, vector store, LLM provider)
+- **`semantica watch`** — auto-ingest new/changed files in a directory using configurable glob patterns · `pip install semantica[watch]`
+- **`semantica changelog`** — fetches latest release notes from GitHub and flags available upgrades
+- **`semantica shell`** — interactive REPL: type any subcommand without the `semantica` prefix; readline history on Unix
+- **Progress bars** — `kg build` with multiple `--source` flags shows a per-source `BarColumn + MofNCompleteColumn + TimeElapsedColumn` bar; `ingest` gains a spinner
+- **Elapsed timing** — every success line now shows how long the command took (`✓ Knowledge graph built  4.2s`)
+- **Structured error cards** — failures render as a red-bordered Rich Panel with an actionable hint (`ConnectionRefusedError → run semantica doctor`)
+- **Windows UTF-8** — `UnicodeEncodeError` on cp1252 consoles eliminated; stdout/stderr reconfigured to UTF-8 at startup
 
 ### 📦 More in This Release
 
