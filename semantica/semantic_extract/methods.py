@@ -1803,8 +1803,10 @@ Common relation types include: related_to, part_of, located_in, created_by, uses
 
     verbose_mode = kwargs.get("verbose", False)
     if verbose_mode:
-        import sys
-        print(f"    [methods.extract_relations_llm] Constructing prompt for {len(prompt_entities)} entities...", flush=True, file=sys.stdout)
+        logger.debug(
+            "[methods.extract_relations_llm] Constructing prompt for %d entities...",
+            len(prompt_entities),
+        )
 
     if not SCHEMAS_AVAILABLE:
         raise ImportError("Pydantic schemas not available. Install pydantic/instructor to use LLM extraction.")
@@ -1895,8 +1897,10 @@ Entities found in text: {entities_str}"""
     try:
         # Use typed generation with Pydantic schema
         if verbose_mode:
-            import sys
-            print(f"    [methods.extract_relations_llm] Calling llm.generate_typed ({provider}/{model})...", flush=True, file=sys.stdout)
+            logger.debug(
+                "[methods.extract_relations_llm] Calling llm.generate_typed (%s/%s)...",
+                provider, model,
+            )
         # Only forward minimal, safe parameters to provider calls
         call_kwargs = {}
         if "temperature" in kwargs:
@@ -1910,8 +1914,9 @@ Entities found in text: {entities_str}"""
         active_schema = RelationsWithTemporalResponse if extract_temporal_bounds else RelationsResponse
         result_obj = llm.generate_typed(prompt, schema=active_schema, **call_kwargs)
         if verbose_mode:
-            import sys
-            print(f"    [methods.extract_relations_llm] Received response from {provider}.", flush=True, file=sys.stdout)
+            logger.debug(
+                "[methods.extract_relations_llm] Received response from %s.", provider
+            )
 
         # Convert back to internal Relation format (robust across providers)
         # Normalize typed result to a plain dict compatible with _parse_relation_result
@@ -1957,8 +1962,9 @@ Entities found in text: {entities_str}"""
         if not relations:
             try:
                 if verbose_mode:
-                    import sys
-                    print("    [methods.extract_relations_llm] Typed result empty, attempting structured JSON fallback...", flush=True, file=sys.stdout)
+                    logger.debug(
+                        "[methods.extract_relations_llm] Typed result empty, attempting structured JSON fallback..."
+                    )
                 raw_json = llm.generate_structured(prompt, **call_kwargs)
                 relations = _parse_relation_result(
                     raw_json, original_entities, text, provider, model,

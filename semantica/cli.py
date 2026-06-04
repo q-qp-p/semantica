@@ -15,8 +15,13 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence,
 import yaml
 
 import click
+from rich import box
 from rich.console import Console
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.syntax import Syntax
 from rich.table import Table
+from rich.text import Text
 
 from . import __version__
 from .core.config_manager import Config, ConfigManager
@@ -27,6 +32,15 @@ if TYPE_CHECKING:
     from .core.orchestrator import Semantica
 
 console = Console()
+
+# ─── Visual style constants ───────────────────────────────────────────────────
+_BRAND    = "bold blue"
+_KEY      = "cyan"
+_VAL      = "green"
+_DIM      = "dim"
+_SUCCESS  = "bold green"
+_WARN_STY = "bold yellow"
+_TABLE_BOX = box.SIMPLE_HEAD   # single underline under headers; ASCII-safe
 
 
 @dataclass
@@ -192,20 +206,21 @@ def _run_build(cli_ctx: CLIContext, sources: Sequence[str]) -> None:
         )
 
     framework = _get_framework(cli_ctx)
-    console.print(f"Initializing Semantica with {len(sources)} sources...")
-    result = framework.build_knowledge_base(sources=list(sources))
+    if cli_ctx.quiet or cli_ctx.json_output:
+        result = framework.build_knowledge_base(sources=list(sources))
+    else:
+        with console.status(
+            f"[{_DIM}]Building knowledge base from {len(sources)} source(s)…[/{_DIM}]",
+            spinner="dots",
+        ):
+            result = framework.build_knowledge_base(sources=list(sources))
 
     stats = result.get("statistics", {}) if isinstance(result, dict) else {}
     processed = stats.get("sources_processed")
     if processed is not None:
-        console.print(
-            "[bold green]Success:[/bold green] Knowledge base build completed "
-            f"for {processed} source(s)."
-        )
+        _ok(cli_ctx, f"Knowledge base built — {processed} source(s) processed.")
     else:
-        console.print(
-            "[bold green]Success:[/bold green] Knowledge base build completed."
-        )
+        _ok(cli_ctx, "Knowledge base build completed.")
 
 
 def _run_build_command(
@@ -376,15 +391,21 @@ def info(cli_ctx: CLIContext):
     cli_ctx = _require_ctx(cli_ctx)
 
     def _action() -> None:
-        console.print(f"[bold blue]Semantica Framework[/bold blue] v{__version__}")
         console.print(
-            "A comprehensive Python framework for transforming unstructured data "
-            "into semantic layers."
+            Panel(
+                Text.from_markup(
+                    f"[{_BRAND}]Semantica Framework[/{_BRAND}]  v{__version__}\n"
+                    f"[{_DIM}]Semantic Layer & Knowledge Engineering[/{_DIM}]"
+                ),
+                box=box.ROUNDED,
+                padding=(0, 2),
+                expand=False,
+            )
         )
 
-        table = Table(title="Framework Components")
-        table.add_column("Component", style="cyan")
-        table.add_column("Status", style="green")
+        table = Table(box=_TABLE_BOX, show_edge=False, padding=(0, 1))
+        table.add_column("Component", style=_KEY, no_wrap=True)
+        table.add_column("Status", style=_VAL)
 
         table.add_row("Core Orchestrator", "Active")
         table.add_row("Knowledge Graph Engine", "Active")
@@ -470,7 +491,16 @@ def _jecho(data: Any) -> None:
 
 def _ok(cli_ctx: CLIContext, text: str) -> None:
     if not cli_ctx.quiet:
-        console.print(f"[bold green]Success:[/bold green] {text}")
+        console.print(f"[{_SUCCESS}] ✓[/{_SUCCESS}] {text}")
+
+
+def _info(cli_ctx: CLIContext, text: str) -> None:
+    if not cli_ctx.quiet:
+        console.print(f"[{_DIM}] ·[/{_DIM}] {text}")
+
+
+def _warn(cli_ctx: CLIContext, text: str) -> None:
+    console.print(f"[{_WARN_STY}] ⚠[/{_WARN_STY}] {text}")
 
 
 def _dry(cli_ctx: CLIContext, action: str, *, json_out: bool = False, **fields: Any) -> None:
@@ -478,7 +508,7 @@ def _dry(cli_ctx: CLIContext, action: str, *, json_out: bool = False, **fields: 
     if json_out or cli_ctx.json_output:
         _jecho(payload)
     elif not cli_ctx.quiet:
-        console.print(f"[yellow]Dry run:[/yellow] would {action}: {fields}")
+        console.print(f"[{_WARN_STY}] Dry run:[/{_WARN_STY}] would {action}: {fields}")
 
 
 def _is_dry(cli_ctx: CLIContext, local_dry: bool) -> bool:
@@ -487,6 +517,27 @@ def _is_dry(cli_ctx: CLIContext, local_dry: bool) -> bool:
 
 def _is_json(cli_ctx: CLIContext, local_json: bool) -> bool:
     return local_json or cli_ctx.json_output
+
+
+def _pprint(cli_ctx: CLIContext, data: Any) -> None:
+    """Pretty-print a result to the terminal.
+
+    Dicts and lists are rendered as syntax-highlighted JSON.
+    Strings are printed as-is. Respects --quiet and --no-color.
+    """
+    if cli_ctx.quiet:
+        return
+    if isinstance(data, (dict, list)):
+        console.print(
+            Syntax(
+                json.dumps(data, indent=2, default=str),
+                "json",
+                theme="monokai",
+                word_wrap=True,
+            )
+        )
+    else:
+        console.print(str(data))
 
 
 def _serialize_extract_result(obj: Any) -> Any:
@@ -524,7 +575,7 @@ def kg_query(cli_ctx: CLIContext, query_str: str, lang: str, limit: int, local_j
         if json_out:
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -551,9 +602,10 @@ def kg_stats(cli_ctx: CLIContext, fmt: str, local_json: bool) -> None:
         if json_out:
             _jecho(stats)
         else:
-            table = Table(title="Knowledge Graph Statistics")
-            table.add_column("Metric", style="cyan")
-            table.add_column("Value", style="green")
+            table = Table(title="[bold]Knowledge Graph Statistics[/bold]",
+                          box=_TABLE_BOX, show_edge=False, padding=(0, 1))
+            table.add_column("Metric", style=_KEY, no_wrap=True)
+            table.add_column("Value", style=_VAL)
             for k, v in (stats.items() if isinstance(stats, dict) else []):
                 table.add_row(str(k), str(v))
             console.print(table)
@@ -580,7 +632,7 @@ def kg_analyze(cli_ctx: CLIContext, mode: str, local_json: bool) -> None:
         if json_out:
             _jecho(result if isinstance(result, dict) else {"result": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -610,7 +662,7 @@ def kg_find_path(cli_ctx: CLIContext, from_entity: str, to_entity: str,
         if json_out:
             _jecho(path if isinstance(path, dict) else {"path": path})
         else:
-            console.print(path)
+            _pprint(cli_ctx, path)
 
     _run_with_error_handling(_action)
 
@@ -652,7 +704,7 @@ def kg_predict(cli_ctx: CLIContext, local_json: bool) -> None:
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"result": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -776,7 +828,11 @@ def parse_cmd(cli_ctx: CLIContext, file: str, parser: Optional[str], fmt: str) -
             kwargs["parser"] = parser
         try:
             from .parse import parse_document
-            result = parse_document(**kwargs)
+            if cli_ctx.quiet or cli_ctx.json_output:
+                result = parse_document(**kwargs)
+            else:
+                with console.status(f"[{_DIM}]Parsing {Path(file).name}…[/{_DIM}]", spinner="dots"):
+                    result = parse_document(**kwargs)
         except ImportError as exc:
             raise click.ClickException(f"Parse module not available: {exc}") from exc
         if fmt == "json" or _is_json(cli_ctx, False):
@@ -784,7 +840,7 @@ def parse_cmd(cli_ctx: CLIContext, file: str, parser: Optional[str], fmt: str) -
         elif fmt == "yaml":
             click.echo(yaml.dump(result, default_flow_style=False))
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -873,7 +929,7 @@ def normalize(cli_ctx: CLIContext, input_text: str, mode: str, domain: str,
         if _is_json(cli_ctx, local_json):
             _jecho({"result": result})
         else:
-            click.echo(result)
+            console.print(str(result))
 
     _run_with_error_handling(_action)
 
@@ -931,32 +987,38 @@ def extract(
             if model:
                 extractor_config["llm_model"] = model
 
-            if mode == "triplets":
-                extractor = TripletExtractor(
-                    method=method, include_temporal=temporal, **extractor_config
-                )
-                result = extractor.extract(text)
+            def _run_extraction() -> Any:
+                if mode == "triplets":
+                    extractor = TripletExtractor(
+                        method=method, include_temporal=temporal, **extractor_config
+                    )
+                    return extractor.extract(text)
+                elif mode == "relations":
+                    ner = NERExtractor(method=method, **extractor_config)
+                    entities = ner.extract(text)
+                    extractor = RelationExtractor(
+                        method=method, confidence_threshold=confidence, **extractor_config
+                    )
+                    return extractor.extract(text, entities=entities)
+                elif mode == "ner":
+                    extractor = NERExtractor(method=method, **extractor_config)
+                    return extractor.extract(text)
+                elif mode == "events":
+                    extractor = EventDetector(method=method, **extractor_config)
+                    return extractor.extract(text)
+                else:
+                    raise click.ClickException(
+                        f"Extraction mode '{mode}' is not yet wired to a runtime extractor."
+                    )
 
-            elif mode == "relations":
-                ner = NERExtractor(method=method, **extractor_config)
-                entities = ner.extract(text)
-                extractor = RelationExtractor(
-                    method=method, confidence_threshold=confidence, **extractor_config
-                )
-                result = extractor.extract(text, entities=entities)
-
-            elif mode == "ner":
-                extractor = NERExtractor(method=method, **extractor_config)
-                result = extractor.extract(text)
-
-            elif mode == "events":
-                extractor = EventDetector(method=method, **extractor_config)
-                result = extractor.extract(text)
-
+            if cli_ctx.quiet or cli_ctx.json_output:
+                result = _run_extraction()
             else:
-                raise click.ClickException(
-                    f"Extraction mode '{mode}' is not yet wired to a runtime extractor."
-                )
+                with console.status(
+                    f"[{_DIM}]Running {mode} extraction ({method})…[/{_DIM}]",
+                    spinner="dots",
+                ):
+                    result = _run_extraction()
         except ImportError as exc:
             raise click.ClickException(f"Extract module not available: {exc}") from exc
         serialized = _serialize_extract_result(result)
@@ -1013,11 +1075,19 @@ def embed_generate(cli_ctx: CLIContext, input_path: str, model: str,
     def _action() -> None:
         try:
             from .embeddings import generate_embeddings
-            result = generate_embeddings(
+            _gen = lambda: generate_embeddings(
                 input_path, model=model,
                 store=store_backend or cli_ctx.vector_store_backend,
                 namespace=namespace,
             )
+            if cli_ctx.quiet or cli_ctx.json_output:
+                result = _gen()
+            else:
+                with console.status(
+                    f"[{_DIM}]Generating embeddings ({model})…[/{_DIM}]",
+                    spinner="dots",
+                ):
+                    result = _gen()
         except ImportError as exc:
             raise click.ClickException(f"Embeddings module not available: {exc}") from exc
         if output:
@@ -1068,7 +1138,7 @@ def embed_search(cli_ctx: CLIContext, query_text: str, store: Optional[str],
         if _is_json(cli_ctx, local_json):
             _jecho(results if isinstance(results, (dict, list)) else {"results": str(results)})
         else:
-            console.print(results)
+            _pprint(cli_ctx, results)
 
     _run_with_error_handling(_action)
 
@@ -1190,46 +1260,56 @@ def deduplicate(
             from .deduplication import detect_duplicates
             from .deduplication.entity_merger import EntityMerger
 
-            entities = _load_entities()
-            candidate_strategy = strategy_map.get(strategy, strategy)
-            detector_sort_by = "similarity_score" if sort_by == "similarity" else "confidence"
-            detection_kwargs: Dict[str, Any] = {
-                "candidate_strategy": candidate_strategy,
-                "sort_by": detector_sort_by,
-            }
-            if dedup_action == "detect":
-                result = detect_duplicates(
-                    entities,
-                    method="group",
-                    similarity_threshold=min_similarity,
-                    **detection_kwargs,
-                )
-            elif dedup_action == "merge":
-                merger = EntityMerger()
-                result = merger.merge_duplicates(
-                    entities,
-                    threshold=min_similarity,
-                    **detection_kwargs,
-                )
-            else:  # report — pairwise pairs with similarity scores
-                pairs = detect_duplicates(
-                    entities,
-                    method="pairwise",
-                    similarity_threshold=min_similarity,
-                    **detection_kwargs,
-                )
-                result = {
-                    "total_entities": len(entities),
-                    "duplicate_pairs": len(pairs),
-                    "pairs": [
-                        {
-                            "entity_1": getattr(p, "entity1_id", None),
-                            "entity_2": getattr(p, "entity2_id", None),
-                            "similarity": getattr(p, "similarity_score", None),
-                        }
-                        for p in pairs
-                    ],
+            def _run_dedup() -> Any:
+                entities = _load_entities()
+                candidate_strategy = strategy_map.get(strategy, strategy)
+                detector_sort_by = "similarity_score" if sort_by == "similarity" else "confidence"
+                detection_kwargs: Dict[str, Any] = {
+                    "candidate_strategy": candidate_strategy,
+                    "sort_by": detector_sort_by,
                 }
+                if dedup_action == "detect":
+                    return detect_duplicates(
+                        entities,
+                        method="group",
+                        similarity_threshold=min_similarity,
+                        **detection_kwargs,
+                    )
+                elif dedup_action == "merge":
+                    merger = EntityMerger()
+                    return merger.merge_duplicates(
+                        entities,
+                        threshold=min_similarity,
+                        **detection_kwargs,
+                    )
+                else:  # report — pairwise pairs with similarity scores
+                    pairs = detect_duplicates(
+                        entities,
+                        method="pairwise",
+                        similarity_threshold=min_similarity,
+                        **detection_kwargs,
+                    )
+                    return {
+                        "total_entities": len(entities),
+                        "duplicate_pairs": len(pairs),
+                        "pairs": [
+                            {
+                                "entity_1": getattr(p, "entity1_id", None),
+                                "entity_2": getattr(p, "entity2_id", None),
+                                "similarity": getattr(p, "similarity_score", None),
+                            }
+                            for p in pairs
+                        ],
+                    }
+
+            if cli_ctx.quiet or cli_ctx.json_output:
+                result = _run_dedup()
+            else:
+                with console.status(
+                    f"[{_DIM}]Running deduplication ({strategy}, {dedup_action})…[/{_DIM}]",
+                    spinner="dots",
+                ):
+                    result = _run_dedup()
         except ImportError as exc:
             raise click.ClickException(f"Deduplication module not available: {exc}") from exc
         if output:
@@ -1238,7 +1318,7 @@ def deduplicate(
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1277,13 +1357,20 @@ def reason_run(cli_ctx: CLIContext, engine: str, rules: Optional[str],
         try:
             from .reasoning import Reasoner
             r = Reasoner(engine=engine, config=cli_ctx.config.to_dict())
-            result = r.run(rules_file=rules)
+            if cli_ctx.quiet or cli_ctx.json_output:
+                result = r.run(rules_file=rules)
+            else:
+                with console.status(
+                    f"[{_DIM}]Running {engine} reasoning engine…[/{_DIM}]",
+                    spinner="dots",
+                ):
+                    result = r.run(rules_file=rules)
         except ImportError as exc:
             raise click.ClickException(f"Reasoning module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"result": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1309,13 +1396,20 @@ def reason_explain(cli_ctx: CLIContext, conclusion: str, depth: int,
         try:
             from .reasoning import ExplanationGenerator
             gen = ExplanationGenerator(config=cli_ctx.config.to_dict())
-            expl = gen.explain(conclusion, depth=depth)
+            if cli_ctx.quiet or cli_ctx.json_output:
+                expl = gen.explain(conclusion, depth=depth)
+            else:
+                with console.status(
+                    f"[{_DIM}]Generating explanation (depth={depth})…[/{_DIM}]",
+                    spinner="dots",
+                ):
+                    expl = gen.explain(conclusion, depth=depth)
         except ImportError as exc:
             raise click.ClickException(f"Reasoning module not available: {exc}") from exc
         if _is_json(cli_ctx, local_json) or fmt == "json":
             _jecho(expl if isinstance(expl, dict) else {"explanation": str(expl)})
         else:
-            console.print(expl)
+            _pprint(cli_ctx, expl)
 
     _run_with_error_handling(_action)
 
@@ -1346,7 +1440,7 @@ def reason_query(cli_ctx: CLIContext, query_str: str, with_inference: bool,
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1366,8 +1460,9 @@ def reason_list(cli_ctx: CLIContext) -> None:
     if cli_ctx.json_output:
         _jecho({"engines": engines})
     else:
-        table = Table(title="Available Reasoning Engines")
-        table.add_column("Engine", style="cyan")
+        table = Table(title="[bold]Available Reasoning Engines[/bold]",
+                      box=_TABLE_BOX, show_edge=False, padding=(0, 1))
+        table.add_column("Engine", style=_KEY)
         for e in engines:
             table.add_row(e)
         console.print(table)
@@ -1464,8 +1559,9 @@ def decision_list(cli_ctx: CLIContext, limit: int, fmt: str, local_json: bool) -
         if _is_json(cli_ctx, local_json) or fmt == "json":
             _jecho(results)
         else:
-            table = Table(title="Recent Decisions")
-            table.add_column("ID", style="cyan")
+            table = Table(title="[bold]Recent Decisions[/bold]",
+                          box=_TABLE_BOX, show_edge=False, padding=(0, 1))
+            table.add_column("ID", style=_KEY, no_wrap=True)
             table.add_column("Title")
             table.add_column("Category")
             for d in results:
@@ -1506,7 +1602,7 @@ def decision_query(cli_ctx: CLIContext, filter_str: Optional[str],
         if _is_json(cli_ctx, local_json) or fmt == "json":
             _jecho(results)
         else:
-            console.print(results)
+            _pprint(cli_ctx, results)
 
     _run_with_error_handling(_action)
 
@@ -1567,7 +1663,7 @@ def decision_similar(cli_ctx: CLIContext, decision_id: str, top_k: int, local_js
         if _is_json(cli_ctx, local_json):
             _jecho(results)
         else:
-            console.print(results)
+            _pprint(cli_ctx, results)
 
     _run_with_error_handling(_action)
 
@@ -1589,7 +1685,7 @@ def decision_impact(cli_ctx: CLIContext, decision_id: str, local_json: bool) -> 
         if _is_json(cli_ctx, local_json):
             _jecho(result)
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1619,7 +1715,7 @@ def decision_check(cli_ctx: CLIContext, decision_id: str, rules: Optional[str],
         if _is_json(cli_ctx, local_json):
             _jecho(result)
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1657,7 +1753,7 @@ def temporal_snapshot(cli_ctx: CLIContext, at_time: str, fmt: str, local_json: b
         if _is_json(cli_ctx, local_json) or fmt == "json":
             _jecho(result if isinstance(result, dict) else {"snapshot": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1680,7 +1776,7 @@ def temporal_query(cli_ctx: CLIContext, query_str: str, local_json: bool) -> Non
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1711,7 +1807,7 @@ def temporal_history(cli_ctx: CLIContext, entity_id: str, since: Optional[str],
         if _is_json(cli_ctx, local_json) or fmt == "json":
             _jecho(result if isinstance(result, list) else [])
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1737,7 +1833,7 @@ def temporal_distance(cli_ctx: CLIContext, event1: str, event2: str,
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"distance": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1799,7 +1895,7 @@ def provenance_lineage(cli_ctx: CLIContext, entity_id: str, depth: int, local_js
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"lineage": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1937,7 +2033,7 @@ def validate_shacl(cli_ctx: CLIContext, shapes: Optional[str], strictness: str,
         if _is_json(cli_ctx, local_json):
             _jecho(payload)
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -1969,7 +2065,7 @@ def validate_conflicts(cli_ctx: CLIContext, strategy: str, fmt: str, local_json:
         if _is_json(cli_ctx, local_json) or fmt == "json":
             _jecho(result if isinstance(result, dict) else {"conflicts": result})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -2037,7 +2133,7 @@ def ontology_generate(cli_ctx: CLIContext, domain: Optional[str], output: Option
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"ontology": str(result)})
         else:
-            click.echo(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -2104,7 +2200,7 @@ def ontology_validate(cli_ctx: CLIContext, shapes: Optional[str], strictness: st
         if _is_json(cli_ctx, local_json):
             _jecho(payload)
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -2162,7 +2258,7 @@ def skos_search(cli_ctx: CLIContext, term: str, local_json: bool) -> None:
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"results": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -2185,7 +2281,7 @@ def skos_hierarchy(cli_ctx: CLIContext, uri: str, local_json: bool) -> None:
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"hierarchy": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -2221,7 +2317,7 @@ def ontology_align(cli_ctx: CLIContext, source: str, target: str, strategy: str,
         elif _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"alignments": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -2245,7 +2341,7 @@ def ontology_health(cli_ctx: CLIContext, fmt: str, local_json: bool) -> None:
         if _is_json(cli_ctx, local_json) or fmt == "json":
             _jecho(result if isinstance(result, dict) else {"health": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -2267,7 +2363,7 @@ def ontology_version(cli_ctx: CLIContext, local_json: bool) -> None:
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"version": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -2562,7 +2658,7 @@ def pipeline_status(cli_ctx: CLIContext, local_json: bool) -> None:
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, dict) else {"status": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 
@@ -2607,8 +2703,9 @@ def store_list(cli_ctx: CLIContext, local_json: bool) -> None:
         if _is_json(cli_ctx, local_json):
             _jecho(backends)
         else:
-            table = Table(title="Configured Backends")
-            table.add_column("Type", style="cyan")
+            table = Table(title="[bold]Configured Backends[/bold]",
+                          box=_TABLE_BOX, show_edge=False, padding=(0, 1))
+            table.add_column("Type", style=_KEY, no_wrap=True)
             table.add_column("Backend")
             table.add_column("URI/Host")
             for store_type, info in backends.items():
@@ -2842,11 +2939,12 @@ def backup_info(cli_ctx: CLIContext, local_json: bool) -> None:
         if _is_json(cli_ctx, local_json):
             _jecho(rows)
         else:
-            table = Table(title="Backup Info (credentials redacted)")
-            table.add_column("Store", style="cyan")
+            table = Table(title="[bold]Backup Info[/bold] [dim](credentials redacted)[/dim]",
+                          box=_TABLE_BOX, show_edge=False, padding=(0, 1))
+            table.add_column("Store", style=_KEY, no_wrap=True)
             table.add_column("Backend")
             table.add_column("URI/Location")
-            table.add_column("Method", style="green")
+            table.add_column("Method", style=_VAL)
             for r in rows:
                 table.add_row(r["store"], r["backend"], r["uri"], r["method"])
             console.print(table)
@@ -2917,7 +3015,7 @@ def backup_create(
         if not strip_config and not encrypt and passphrase is None:
             if not quiet:
                 console.print(
-                    "[yellow]Warning:[/yellow] backup includes semantica.yaml which may contain "
+                    f"[{_WARN_STY}] ⚠[/{_WARN_STY}] backup includes semantica.yaml which may contain "
                     "credentials. Use --encrypt or --strip-config to suppress this warning."
                 )
             click.confirm("Continue without encryption?", abort=True)
@@ -3260,7 +3358,7 @@ def server_stop(cli_ctx: CLIContext) -> None:
     if _kill_service("server"):
         _ok(cli_ctx, "Server stopped.")
     else:
-        console.print("[yellow]Server is not running.[/yellow]")
+        console.print(f"[{_WARN_STY}] ⚠[/{_WARN_STY}] Server is not running.")
 
 
 @server.command("status")
@@ -3322,7 +3420,7 @@ def explorer_stop(cli_ctx: CLIContext) -> None:
     if _kill_service("explorer"):
         _ok(cli_ctx, "Explorer stopped.")
     else:
-        console.print("[yellow]Explorer is not running.[/yellow]")
+        console.print(f"[{_WARN_STY}] ⚠[/{_WARN_STY}] Explorer is not running.")
 
 
 @explorer.command("status")
@@ -3392,7 +3490,7 @@ def mcp_stop(cli_ctx: CLIContext) -> None:
     if _kill_service("mcp"):
         _ok(cli_ctx, "MCP server stopped.")
     else:
-        console.print("[yellow]MCP server is not running.[/yellow]")
+        console.print(f"[{_WARN_STY}] ⚠[/{_WARN_STY}] MCP server is not running.")
 
 
 @mcp.command("status")
@@ -3428,8 +3526,9 @@ def mcp_list_tools(cli_ctx: CLIContext, local_json: bool) -> None:
         if _is_json(cli_ctx, local_json):
             _jecho({"tools": list(tools)})
         else:
-            table = Table(title="MCP Tools")
-            table.add_column("Tool", style="cyan")
+            table = Table(title="[bold]MCP Tools[/bold]",
+                          box=_TABLE_BOX, show_edge=False, padding=(0, 1))
+            table.add_column("Tool", style=_KEY)
             for t in tools:
                 table.add_row(str(t))
             console.print(table)
@@ -3465,7 +3564,7 @@ def mcp_call(cli_ctx: CLIContext, tool_name: str, args: str, local_json: bool) -
         if _is_json(cli_ctx, local_json):
             _jecho(result if isinstance(result, (dict, list)) else {"result": str(result)})
         else:
-            console.print(result)
+            _pprint(cli_ctx, result)
 
     _run_with_error_handling(_action)
 

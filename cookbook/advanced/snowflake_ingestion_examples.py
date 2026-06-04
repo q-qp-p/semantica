@@ -7,17 +7,26 @@ This module provides comprehensive examples of using the Snowflake ingestor.
 import os
 from datetime import datetime, timedelta
 
+from rich import box
+from rich.console import Console
+from rich.rule import Rule
+from rich.table import Table
+
 from semantica.ingest import SnowflakeIngestor
 from semantica.utils.logging import get_logger
 
 logger = get_logger("snowflake_examples")
+console = Console()
+
+
+def _section(title: str) -> None:
+    console.print(Rule(f"[bold cyan]{title}[/bold cyan]", style="cyan"))
 
 
 def example_basic_ingestion():
     """Example: Basic table ingestion."""
-    print("\n=== Example 1: Basic Table Ingestion ===\n")
+    _section("Example 1: Basic Table Ingestion")
 
-    # Initialize ingestor with password authentication
     ingestor = SnowflakeIngestor(
         account=os.getenv("SNOWFLAKE_ACCOUNT"),
         user=os.getenv("SNOWFLAKE_USER"),
@@ -27,26 +36,23 @@ def example_basic_ingestion():
         schema="PUBLIC",
     )
 
-    # Ingest a table
     data = ingestor.ingest_table("CUSTOMERS", limit=10)
 
-    print(f"Retrieved {data.row_count} rows")
-    print(f"Columns: {data.columns}")
-    print(f"\nFirst row:")
-    print(data.data[0])
+    console.print(f"[green]✓[/green] Retrieved [cyan]{data.row_count}[/cyan] rows")
+    console.print(f"  Columns: [dim]{data.columns}[/dim]")
+    console.print(f"  First row: [dim]{data.data[0]}[/dim]")
 
     ingestor.close()
 
 
 def example_query_execution():
     """Example: Execute custom SQL queries."""
-    print("\n=== Example 2: Query Execution ===\n")
+    _section("Example 2: Query Execution")
 
     ingestor = SnowflakeIngestor()
 
-    # Execute aggregation query
     query = """
-        SELECT 
+        SELECT
             COUNTRY,
             COUNT(*) AS CUSTOMER_COUNT,
             SUM(TOTAL_PURCHASES) AS TOTAL_REVENUE
@@ -58,34 +64,34 @@ def example_query_execution():
 
     data = ingestor.ingest_query(query)
 
-    print(f"Top 10 countries by revenue:")
+    table = Table(title="[bold]Top 10 Countries by Revenue[/bold]",
+                  box=box.SIMPLE_HEAD, show_edge=False, padding=(0, 1))
+    table.add_column("Country", style="cyan", no_wrap=True)
+    table.add_column("Customers", style="green", justify="right")
+    table.add_column("Revenue", style="green", justify="right")
     for row in data.data:
-        print(
-            f"  {row['COUNTRY']}: {row['CUSTOMER_COUNT']} customers, "
-            f"${row['TOTAL_REVENUE']:,.2f} revenue"
+        table.add_row(
+            row["COUNTRY"],
+            str(row["CUSTOMER_COUNT"]),
+            f"${row['TOTAL_REVENUE']:,.2f}",
         )
+    console.print(table)
 
     ingestor.close()
 
 
 def example_parameterized_query():
     """Example: Parameterized queries."""
-    print("\n=== Example 3: Parameterized Queries ===\n")
+    _section("Example 3: Parameterized Queries")
 
     ingestor = SnowflakeIngestor()
 
-    # Calculate date range
     end_date = datetime.now()
     start_date = end_date - timedelta(days=30)
 
-    # Execute parameterized query
     query = """
-        SELECT 
-            ORDER_ID,
-            CUSTOMER_ID,
-            PRODUCT_NAME,
-            AMOUNT,
-            ORDER_DATE
+        SELECT
+            ORDER_ID, CUSTOMER_ID, PRODUCT_NAME, AMOUNT, ORDER_DATE
         FROM ORDERS
         WHERE ORDER_DATE BETWEEN %(start_date)s AND %(end_date)s
           AND AMOUNT > %(min_amount)s
@@ -101,122 +107,125 @@ def example_parameterized_query():
         },
     )
 
-    print(f"Found {data.row_count} orders in the last 30 days over $100")
-
+    console.print(
+        f"[green]✓[/green] Found [cyan]{data.row_count}[/cyan] orders "
+        "in the last 30 days over $100"
+    )
     ingestor.close()
 
 
 def example_schema_introspection():
     """Example: Table schema introspection."""
-    print("\n=== Example 4: Schema Introspection ===\n")
+    _section("Example 4: Schema Introspection")
 
     ingestor = SnowflakeIngestor()
-
-    # Get table schema
     schema = ingestor.get_table_schema("CUSTOMERS")
 
-    print("Table schema for CUSTOMERS:")
-    print(f"Primary keys: {schema['primary_keys']}\n")
+    console.print(f"  Primary keys: [cyan]{schema['primary_keys']}[/cyan]")
 
-    print("Columns:")
+    table = Table(title="[bold]CUSTOMERS Schema[/bold]",
+                  box=box.SIMPLE_HEAD, show_edge=False, padding=(0, 1))
+    table.add_column("Column", style="cyan", no_wrap=True)
+    table.add_column("Type")
+    table.add_column("Nullable")
+    table.add_column("Default", style="dim")
     for col in schema["columns"]:
-        nullable = "NULL" if col["nullable"] else "NOT NULL"
-        default = f" DEFAULT {col['default']}" if col["default"] else ""
-        print(f"  {col['name']}: {col['type']} {nullable}{default}")
+        table.add_row(
+            col["name"],
+            col["type"],
+            "NULL" if col["nullable"] else "NOT NULL",
+            str(col["default"]) if col["default"] else "",
+        )
+    console.print(table)
 
     ingestor.close()
 
 
 def example_list_tables():
     """Example: List all tables in a schema."""
-    print("\n=== Example 5: List Tables ===\n")
+    _section("Example 5: List Tables")
 
     ingestor = SnowflakeIngestor()
-
-    # List tables in current schema
     tables = ingestor.list_tables()
 
-    print(f"Found {len(tables)} tables:")
-    for table in tables:
-        print(f"  - {table}")
+    table = Table(title=f"[bold]Tables ({len(tables)} found)[/bold]",
+                  box=box.SIMPLE_HEAD, show_edge=False, padding=(0, 1))
+    table.add_column("Table", style="cyan")
+    for t in tables:
+        table.add_row(t)
+    console.print(table)
 
     ingestor.close()
 
 
 def example_pagination():
     """Example: Paginate large result sets."""
-    print("\n=== Example 6: Pagination ===\n")
+    _section("Example 6: Pagination")
 
     ingestor = SnowflakeIngestor()
-
     PAGE_SIZE = 100
     total_rows = 0
-
-    # Paginate through large table
     page = 0
+
     while True:
         data = ingestor.ingest_table(
             "LARGE_TABLE", limit=PAGE_SIZE, offset=page * PAGE_SIZE
         )
-
         if data.row_count == 0:
             break
-
         total_rows += data.row_count
-        print(f"Page {page + 1}: {data.row_count} rows")
-
-        # Process page
+        console.print(
+            f"  [dim]Page {page + 1}:[/dim] [cyan]{data.row_count}[/cyan] rows"
+        )
         process_page(data)
-
         page += 1
 
-    print(f"\nTotal rows processed: {total_rows}")
-
+    console.print(
+        f"[green]✓[/green] Total rows processed: [cyan]{total_rows}[/cyan]"
+    )
     ingestor.close()
 
 
 def example_batch_processing():
     """Example: Batch processing with fetchmany."""
-    print("\n=== Example 7: Batch Processing ===\n")
+    _section("Example 7: Batch Processing")
 
     ingestor = SnowflakeIngestor()
-
-    # Execute query with batching
     data = ingestor.ingest_query(
         "SELECT * FROM LARGE_TABLE WHERE STATUS = 'ACTIVE'", batch_size=1000
     )
-
-    print(f"Retrieved {data.row_count} rows in batches of 1000")
-
+    console.print(
+        f"[green]✓[/green] Retrieved [cyan]{data.row_count}[/cyan] rows "
+        "in batches of 1000"
+    )
     ingestor.close()
 
 
 def example_export_documents():
     """Example: Export to Semantica document format."""
-    print("\n=== Example 8: Export as Documents ===\n")
+    _section("Example 8: Export as Documents")
 
     ingestor = SnowflakeIngestor()
-
-    # Ingest product data
     data = ingestor.ingest_table("PRODUCTS", limit=10)
-
-    # Convert to documents
     documents = ingestor.export_as_documents(
         data, id_field="PRODUCT_ID", text_fields=["PRODUCT_NAME", "DESCRIPTION"]
     )
 
-    print(f"Exported {len(documents)} documents")
-    print("\nFirst document:")
-    print(f"  ID: {documents[0]['id']}")
-    print(f"  Text: {documents[0]['text'][:100]}...")
-    print(f"  Metadata: {documents[0]['metadata']}")
+    console.print(
+        f"[green]✓[/green] Exported [cyan]{len(documents)}[/cyan] documents"
+    )
+    if documents:
+        d = documents[0]
+        console.print(f"  [dim]First doc — ID:[/dim] {d['id']}")
+        console.print(f"  [dim]Text:[/dim] {d['text'][:100]}…")
+        console.print(f"  [dim]Metadata:[/dim] {d['metadata']}")
 
     ingestor.close()
 
 
 def example_key_pair_auth():
     """Example: Key-pair authentication."""
-    print("\n=== Example 9: Key-Pair Authentication ===\n")
+    _section("Example 9: Key-Pair Authentication")
 
     ingestor = SnowflakeIngestor(
         account=os.getenv("SNOWFLAKE_ACCOUNT"),
@@ -224,80 +233,66 @@ def example_key_pair_auth():
         private_key_path=os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH"),
         warehouse="COMPUTE_WH",
     )
-
     data = ingestor.ingest_table("CUSTOMERS", limit=5)
-    print(f"Successfully authenticated and retrieved {data.row_count} rows")
-
+    console.print(
+        f"[green]✓[/green] Authenticated — retrieved [cyan]{data.row_count}[/cyan] rows"
+    )
     ingestor.close()
 
 
 def example_context_manager():
     """Example: Using context manager."""
-    print("\n=== Example 10: Context Manager ===\n")
+    _section("Example 10: Context Manager")
 
     with SnowflakeIngestor() as ingestor:
         data = ingestor.ingest_table("CUSTOMERS", limit=5)
-        print(f"Retrieved {data.row_count} rows")
-
-    # Connection automatically closed
-    print("Connection closed automatically")
+        console.print(
+            f"[green]✓[/green] Retrieved [cyan]{data.row_count}[/cyan] rows"
+        )
+    console.print("[dim]  Connection closed automatically.[/dim]")
 
 
 def example_multi_schema():
     """Example: Multi-schema ingestion."""
-    print("\n=== Example 11: Multi-Schema Ingestion ===\n")
+    _section("Example 11: Multi-Schema Ingestion")
 
     ingestor = SnowflakeIngestor()
+    prod = ingestor.ingest_table("CUSTOMERS", database="PROD_DB", schema="PUBLIC", limit=10)
+    staging = ingestor.ingest_table("CUSTOMERS", database="STAGING_DB", schema="PUBLIC", limit=10)
 
-    # Ingest from different schemas
-    prod_customers = ingestor.ingest_table(
-        "CUSTOMERS", database="PROD_DB", schema="PUBLIC", limit=10
-    )
-
-    staging_customers = ingestor.ingest_table(
-        "CUSTOMERS", database="STAGING_DB", schema="PUBLIC", limit=10
-    )
-
-    print(f"Production customers: {prod_customers.row_count}")
-    print(f"Staging customers: {staging_customers.row_count}")
+    console.print(f"  Production: [cyan]{prod.row_count}[/cyan] customers")
+    console.print(f"  Staging:    [cyan]{staging.row_count}[/cyan] customers")
 
     ingestor.close()
 
 
 def example_error_handling():
     """Example: Error handling."""
-    print("\n=== Example 12: Error Handling ===\n")
+    _section("Example 12: Error Handling")
 
     from semantica.utils.exceptions import ProcessingError, ValidationError
 
     try:
-        # Try to connect with invalid credentials
         ingestor = SnowflakeIngestor(
             account="invalid_account", user="invalid_user", password="invalid_password"
         )
-
-        data = ingestor.ingest_table("CUSTOMERS")
+        ingestor.ingest_table("CUSTOMERS")
 
     except ValidationError as e:
-        print(f"Validation error: {e}")
-
+        console.print(f"[bold yellow] ⚠[/bold yellow] Validation error: {e}")
     except ProcessingError as e:
-        print(f"Processing error: {e}")
-
+        console.print(f"[bold red] ✗[/bold red] Processing error: {e}")
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        console.print(f"[bold red] ✗[/bold red] Unexpected error: {e}")
 
 
 def example_incremental_load():
     """Example: Incremental data loading."""
-    print("\n=== Example 13: Incremental Loading ===\n")
+    _section("Example 13: Incremental Loading")
 
     ingestor = SnowflakeIngestor()
+    last_load = get_last_load_timestamp()
 
-    # Get last load timestamp (from your metadata store)
-    last_load = get_last_load_timestamp()  # Your function
-
-    # Query only new/updated records
     query = """
         SELECT *
         FROM CUSTOMERS
@@ -306,10 +301,10 @@ def example_incremental_load():
     """
 
     data = ingestor.ingest_query(query, params={"last_load": last_load})
-
-    print(f"Loaded {data.row_count} new/updated records since {last_load}")
-
-    # Update last load timestamp
+    console.print(
+        f"[green]✓[/green] Loaded [cyan]{data.row_count}[/cyan] new/updated "
+        f"records since [dim]{last_load}[/dim]"
+    )
     if data.row_count > 0:
         update_last_load_timestamp(datetime.now())
 
@@ -318,20 +313,14 @@ def example_incremental_load():
 
 def example_etl_pipeline():
     """Example: Full ETL pipeline."""
-    print("\n=== Example 14: ETL Pipeline ===\n")
+    _section("Example 14: ETL Pipeline")
 
-    # Extract
     ingestor = SnowflakeIngestor()
 
     sales_query = """
-        SELECT 
-            s.ORDER_ID,
-            s.CUSTOMER_ID,
-            c.CUSTOMER_NAME,
-            s.PRODUCT_ID,
-            p.PRODUCT_NAME,
-            s.AMOUNT,
-            s.ORDER_DATE
+        SELECT
+            s.ORDER_ID, s.CUSTOMER_ID, c.CUSTOMER_NAME,
+            s.PRODUCT_ID, p.PRODUCT_NAME, s.AMOUNT, s.ORDER_DATE
         FROM SALES s
         JOIN CUSTOMERS c ON s.CUSTOMER_ID = c.ID
         JOIN PRODUCTS p ON s.PRODUCT_ID = p.ID
@@ -339,43 +328,33 @@ def example_etl_pipeline():
     """
 
     data = ingestor.ingest_query(sales_query)
-    print(f"Extracted {data.row_count} sales records")
+    console.print(f"  [dim]Extract:[/dim] [cyan]{data.row_count}[/cyan] sales records")
 
-    # Transform
     documents = ingestor.export_as_documents(
         data, id_field="ORDER_ID", text_fields=["CUSTOMER_NAME", "PRODUCT_NAME"]
     )
-    print(f"Transformed to {len(documents)} documents")
+    console.print(f"  [dim]Transform:[/dim] [cyan]{len(documents)}[/cyan] documents")
 
-    # Load (into Semantica)
     from semantica.pipeline import Pipeline
-
     pipeline = Pipeline()
-
     for doc in documents:
         pipeline.process_document(doc)
 
-    print("Loaded documents into Semantica pipeline")
-
+    console.print("[green]✓[/green] Loaded documents into Semantica pipeline")
     ingestor.close()
 
 
-# Utility functions for examples
+# ─── Utility stubs ────────────────────────────────────────────────────────────
+
 def process_page(data):
-    """Process a page of data."""
-    # Your processing logic here
     pass
 
 
 def get_last_load_timestamp():
-    """Get the last load timestamp from metadata store."""
-    # Your implementation here
     return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def update_last_load_timestamp(timestamp):
-    """Update the last load timestamp in metadata store."""
-    # Your implementation here
     pass
 
 
@@ -395,17 +374,10 @@ def main():
     for example_func in examples:
         try:
             example_func()
+            console.print()
         except Exception as e:
-            logger.error(f"Example {example_func.__name__} failed: {e}")
+            logger.error("Example %s failed: %s", example_func.__name__, e)
 
 
 if __name__ == "__main__":
-    # Set up environment variables
-    # export SNOWFLAKE_ACCOUNT=your_account
-    # export SNOWFLAKE_USER=your_user
-    # export SNOWFLAKE_PASSWORD=your_password
-    # export SNOWFLAKE_WAREHOUSE=COMPUTE_WH
-    # export SNOWFLAKE_DATABASE=SAMPLE_DB
-    # export SNOWFLAKE_SCHEMA=PUBLIC
-
     main()

@@ -585,10 +585,12 @@ class GraphBuilder:
                 # For large entity sets, entity resolution can be slow
                 # Show progress and allow skipping if too slow
                 if len(all_entities) > 1000:
-                    print(f"Resolving {len(all_entities)} entities (this may take a while for large sets)...")
-                    print("  Detecting duplicates and merging entities...")
+                    self.logger.info(
+                        "Resolving %d entities (this may take a while for large sets)...",
+                        len(all_entities),
+                    )
                 else:
-                    print(f"Resolving {len(all_entities)} entities...")
+                    self.logger.info("Resolving %d entities...", len(all_entities))
                 
                 self.logger.info(
                     f"Resolving {len(all_entities)} entities using {self.entity_resolution_strategy} strategy"
@@ -596,7 +598,11 @@ class GraphBuilder:
                 resolution_start = time.time()
                 resolved_entities = resolver_to_use.resolve_entities(all_entities)
                 resolution_time = time.time() - resolution_start
-                print(f"[DONE] Resolved to {len(resolved_entities)} unique entities ({resolution_time:.2f}s)")
+                self.logger.info(
+                    "Resolved to %d unique entities (%.2fs)",
+                    len(resolved_entities),
+                    resolution_time,
+                )
                 self.logger.info(
                     f"Entity resolution complete: {len(all_entities)} -> {len(resolved_entities)} unique entities"
                 )
@@ -607,10 +613,9 @@ class GraphBuilder:
                     f"{input_relationships_count} input relationships, 0 in final graph"
                 )
                 self.logger.warning(warning_msg)
-                print(f"Warning: {warning_msg}")
 
             # Build graph structure
-            print("Building graph structure...")
+            self.logger.debug("Building graph structure...")
             structure_start = time.time()
             graph = {
                 "entities": resolved_entities,
@@ -624,11 +629,10 @@ class GraphBuilder:
                 },
             }
             structure_time = time.time() - structure_start
-            print(f"[DONE] Graph structure built ({structure_time:.2f}s)")
+            self.logger.debug("Graph structure built in %.2fs", structure_time)
 
             # Persist to GraphStore if available
             if self.graph_store:
-                print("Persisting knowledge graph to GraphStore...")
                 self.logger.info("Persisting knowledge graph to GraphStore")
                 self.progress_tracker.update_tracking(
                     tracking_id, message="Persisting to GraphStore..."
@@ -638,7 +642,7 @@ class GraphBuilder:
                 # Add nodes
                 node_count = self.graph_store.add_nodes(resolved_entities)
                 node_time = time.time() - store_start
-                print(f"  Added {node_count} nodes ({node_time:.2f}s)")
+                self.logger.info("Added %d nodes (%.2fs)", node_count, node_time)
                 
                 # Prepare edges for add_edges (expects source_id, target_id, type)
                 edge_prep_start = time.time()
@@ -656,9 +660,11 @@ class GraphBuilder:
                 edge_count = self.graph_store.add_edges(formatted_edges)
                 edge_time = time.time() - edge_start
                 total_store_time = time.time() - store_start
-                print(f"  Added {edge_count} edges ({edge_time:.2f}s)")
-                print(f"[DONE] GraphStore persistence complete ({total_store_time:.2f}s total)")
-                self.logger.info(f"Persisted {node_count} nodes and {edge_count} edges")
+                self.logger.info("Added %d edges (%.2fs)", edge_count, edge_time)
+                self.logger.info(
+                    "GraphStore persistence complete in %.2fs — %d nodes, %d edges",
+                    total_store_time, node_count, edge_count,
+                )
 
             # Detect and resolve conflicts if conflict detector is available
             if self.conflict_detector:
@@ -692,20 +698,18 @@ class GraphBuilder:
                 f"{len(resolved_entities)} entities, {len(all_relationships)} relationships"
             )
             
-            # Print final summary with timing
-            print(f"\n{'='*60}")
-            print(f"[INFO] Extraction Statistics")
-            print(f"   Extracted Entities: {self._extraction_stats['extracted_entities']}")
-            print(f"   Extracted Relationships: {self._extraction_stats['extracted_relations']}")
-            print(f"   Extracted Triplets: {self._extraction_stats['extracted_triplets']}")
-            print(f"{'='*60}")
-
-            print(f"\n{'='*60}")
-            print(f"[DONE] Knowledge Graph Build Complete")
-            print(f"   Entities: {len(resolved_entities)}")
-            print(f"   Relationships: {len(all_relationships)}")
-            print(f"   Total time: {total_build_time:.2f}s")
-            print(f"{'='*60}")
+            self.logger.info(
+                "Extraction statistics — entities: %d, relationships: %d, triplets: %d",
+                self._extraction_stats["extracted_entities"],
+                self._extraction_stats["extracted_relations"],
+                self._extraction_stats["extracted_triplets"],
+            )
+            self.logger.info(
+                "Knowledge graph build complete — entities: %d, relationships: %d, time: %.2fs",
+                len(resolved_entities),
+                len(all_relationships),
+                total_build_time,
+            )
 
             self.progress_tracker.stop_tracking(
                 tracking_id,

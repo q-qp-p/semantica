@@ -4,6 +4,11 @@ import subprocess
 import sys
 from datetime import datetime
 
+from rich.console import Console
+from rich.rule import Rule
+
+console = Console()
+
 
 def run_benchmarks():
     """
@@ -15,7 +20,7 @@ def run_benchmarks():
     )
     args = parser.parse_args()
 
-    print("Starting Semantica Benchmark Suite...")
+    console.print(Rule("[bold cyan]Semantica Benchmark Suite[/bold cyan]", style="cyan"))
 
     timestamp = datetime.now().strftime("%Y%m%d_%H_%M_%S")
     os.makedirs("benchmarks/results", exist_ok=True)
@@ -23,34 +28,30 @@ def run_benchmarks():
     current_json = f"benchmarks/results/run_{timestamp}.json"
     baseline_json = "benchmarks/results/baseline.json"
 
-    # Run Benchmarks
     cmd = [
         sys.executable,
         "-m",
         "pytest",
         "benchmarks/",
-        "-p",
-        "no:typeguard",
-        "-p",
-        "no:langsmith",
+        "-p", "no:typeguard",
+        "-p", "no:langsmith",
         "--benchmark-only",
         f"--benchmark-json={current_json}",
         "--benchmark-columns=min,mean,stddev,ops",
         "--benchmark-sort=mean",
     ]
 
-    print(f"Executing benchmarks... (saving to {current_json})")
+    console.print(f"[dim]Saving results to[/dim] {current_json}")
     result = subprocess.run(cmd)
 
     if result.returncode != 0:
-        print("Benchmarks failed to execute (runtime errors).")
+        console.print("[bold red] ✗[/bold red] Benchmarks failed to execute (runtime errors).")
         sys.exit(result.returncode)
 
-    print("Benchmarks completed execution.")
+    console.print("[bold green] ✓[/bold green] Benchmarks completed execution.")
 
-    # Compare against Baseline
     if os.path.exists(baseline_json):
-        print(f"Comparing against Baseline ({baseline_json})...")
+        console.print(f"[dim]Comparing against baseline:[/dim] {baseline_json}")
 
         if os.path.exists("benchmarks/infrastructure/compare.py"):
             compare_cmd = [
@@ -63,21 +64,29 @@ def run_benchmarks():
             compare_result = subprocess.run(compare_cmd)
 
             if compare_result.returncode != 0:
-                print("\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                print("   PERFORMANCE REGRESSION DETECTED")
-                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+                console.print(Rule(style="red"))
+                console.print("[bold red]  PERFORMANCE REGRESSION DETECTED[/bold red]")
+                console.print(Rule(style="red"))
                 if args.strict:
                     sys.exit(1)
             else:
-                print("Performance is within acceptable limits.")
+                console.print(
+                    "[bold green] ✓[/bold green] Performance is within acceptable limits."
+                )
         else:
-            print(
-                "Comparison script not found (benchmarks/infrastructure/compare.py). Skipping comparison."
+            console.print(
+                "[bold yellow] ⚠[/bold yellow] Comparison script not found "
+                "(benchmarks/infrastructure/compare.py). Skipping comparison."
             )
     else:
-        print("No baseline found. This run effectively sets the new baseline.")
+        console.print(
+            "[bold yellow] ⚠[/bold yellow] No baseline found. "
+            "This run effectively sets the new baseline."
+        )
 
-    print(f"\n[Action] To update baseline: cp {current_json} {baseline_json}")
+    console.print(
+        f"\n[dim]To update baseline:[/dim]  cp {current_json} {baseline_json}"
+    )
 
 
 if __name__ == "__main__":

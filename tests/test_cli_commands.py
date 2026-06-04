@@ -198,7 +198,7 @@ class TestKgSubcommands:
     def test_kg_stats_json_with_mock(self, runner, monkeypatch):
         fake_kg = _fake_module(
             GraphAnalyzer=lambda **kw: MagicMock(
-                get_statistics=lambda: {"nodes": 10, "edges": 25, "density": 0.5}
+                compute_metrics=lambda: {"nodes": 10, "edges": 25, "density": 0.5}
             ),
         )
         monkeypatch.setitem(__import__("sys").modules, "semantica.kg", fake_kg)
@@ -501,29 +501,39 @@ class TestExtract:
             assert flag in result.output
 
     def test_dry_run_not_needed_extract_is_read_only(self, runner, monkeypatch):
+        _ner_result = [MagicMock(text="Alice", label="PER", confidence=0.9,
+                                  start_char=0, end_char=5, metadata={})]
         fake_ext = _fake_module(
-            SemanticAnalyzer=lambda **kw: MagicMock(
-                extract=lambda **kw2: {"entities": []}
-            ),
+            NERExtractor=lambda **kw: MagicMock(extract=lambda text, **kw2: _ner_result),
+            RelationExtractor=lambda **kw: MagicMock(extract=lambda text, **kw2: []),
+            TripletExtractor=lambda **kw: MagicMock(extract=lambda text, **kw2: []),
+            EventDetector=lambda **kw: MagicMock(extract=lambda text, **kw2: []),
         )
         monkeypatch.setitem(
             __import__("sys").modules, "semantica.semantic_extract", fake_ext
         )
-        result = runner.invoke(cli_module.main, ["extract", "Alice works at Acme.", "--json"])
+        result = runner.invoke(
+            cli_module.main, ["extract", "Alice works at Acme.", "--mode", "ner", "--json"]
+        )
         _ok(result)
         data = _json_output(result)
-        assert isinstance(data, dict)
+        assert isinstance(data, (dict, list))
 
     def test_stdin_input(self, runner, monkeypatch):
+        _ner_result = [MagicMock(text="Alice", label="PER", confidence=0.9,
+                                  start_char=0, end_char=5, metadata={})]
         fake_ext = _fake_module(
-            SemanticAnalyzer=lambda **kw: MagicMock(
-                extract=lambda **kw2: {"entities": ["Alice"]}
-            ),
+            NERExtractor=lambda **kw: MagicMock(extract=lambda text, **kw2: _ner_result),
+            RelationExtractor=lambda **kw: MagicMock(extract=lambda text, **kw2: []),
+            TripletExtractor=lambda **kw: MagicMock(extract=lambda text, **kw2: []),
+            EventDetector=lambda **kw: MagicMock(extract=lambda text, **kw2: []),
         )
         monkeypatch.setitem(
             __import__("sys").modules, "semantica.semantic_extract", fake_ext
         )
-        result = runner.invoke(cli_module.main, ["extract", "-", "--json"], input="Alice\n")
+        result = runner.invoke(
+            cli_module.main, ["extract", "-", "--mode", "ner", "--json"], input="Alice\n"
+        )
         _ok(result)
 
     def test_import_error_is_clean(self, runner):

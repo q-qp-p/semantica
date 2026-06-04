@@ -238,11 +238,9 @@ class SemanticNetworkExtractor:
                             
                         return idx, network
                     except Exception as e:
-                        self.logger.warning(f"Failed to process item {idx}: {e}")
-                        verbose_mode = kwargs.get("verbose", False) or self.config.get("verbose", False)
-                        if verbose_mode:
-                            import sys
-                            print(f"    [SemanticNetworkExtractor] ERROR: Batch item {idx} failed: {e}", flush=True, file=sys.stderr)
+                        self.logger.warning(
+                            "[SemanticNetworkExtractor] Batch item %d failed: %s", idx, e
+                        )
                         return idx, None
 
                 if max_workers > 1:
@@ -439,11 +437,9 @@ class SemanticNetworkExtractor:
                 tracking_id, status="failed", message=str(e)
             )
             verbose_mode = options.get("verbose", False) or self.config.get("verbose", False)
-            if verbose_mode:
-                import sys
-                print(f"    [SemanticNetworkExtractor] ERROR: Extraction failed: {e}", flush=True, file=sys.stderr)
-                import traceback
-                traceback.print_exc(file=sys.stderr)
+            self.logger.error(
+                "[SemanticNetworkExtractor] Extraction failed: %s", e, exc_info=verbose_mode
+            )
             raise
 
     def _build_network(

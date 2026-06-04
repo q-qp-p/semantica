@@ -438,8 +438,10 @@ class BaseProvider:
 
                     verbose_mode = kwargs.get("verbose", False) or self.config.get("verbose", False)
                     if verbose_mode:
-                        import sys
-                        print(f"    [BaseProvider.generate_typed] Typed response received via instructor ({provider_name}).", flush=True, file=sys.stdout)
+                        self.logger.debug(
+                            "[BaseProvider.generate_typed] Typed response received via instructor (%s).",
+                            provider_name,
+                        )
                     return response
             except Exception as e:
                 self.logger.warning(

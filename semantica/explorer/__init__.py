@@ -14,6 +14,12 @@ import argparse
 import sys
 import webbrowser
 
+from rich.console import Console
+from rich.panel import Panel
+
+_out = Console()
+_err = Console(stderr=True)
+
 
 def main(argv=None):
     """CLI entry point for the Knowledge Explorer server."""
@@ -44,45 +50,48 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
-  
+
     import os
     if not os.path.isfile(args.graph):
-        print(f"Error: graph file not found: {args.graph}", file=sys.stderr)
+        _err.print(f"[bold red]Error:[/bold red] graph file not found: {args.graph}")
         sys.exit(1)
 
     try:
-        import uvicorn 
+        import uvicorn
     except ImportError:
-        print(
-            "Error: uvicorn is required.  Install with:\n"
-            "  pip install semantica[explorer]",
-            file=sys.stderr,
+        _err.print(
+            "[bold red]Error:[/bold red] uvicorn is required.  Install with:\n"
+            "  [dim]pip install semantica[explorer][/dim]"
         )
         sys.exit(1)
 
     from .session import GraphSession
     from .app import create_app
 
-    print(f"Loading graph from {args.graph} ...")
-    session = GraphSession.from_file(args.graph)
+    with _out.status("[dim]Loading graph…[/dim]", spinner="dots"):
+        session = GraphSession.from_file(args.graph)
     stats = session.get_stats()
-    print(
-        f"Graph loaded — {stats.get('node_count', 0)} nodes, "
-        f"{stats.get('edge_count', 0)} edges"
+    _out.print(
+        f"[bold green]✓[/bold green] Graph loaded — "
+        f"[cyan]{stats.get('node_count', 0)}[/cyan] nodes, "
+        f"[cyan]{stats.get('edge_count', 0)}[/cyan] edges"
     )
 
-
     app = create_app(session=session)
-
 
     url = f"http://{args.host}:{args.port}"
     if not args.no_browser:
         import threading
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
 
-    print(f"Starting explorer at {url}")
-    print(f"  API docs:  {url}/docs")
-    print(f"  Health:    {url}/api/health")
+    _out.print(
+        Panel(
+            f"[cyan]API docs[/cyan]  {url}/docs\n[cyan]Health[/cyan]    {url}/api/health",
+            title=f"[bold]Semantica Explorer[/bold] · [dim]{url}[/dim]",
+            border_style="cyan",
+            expand=False,
+        )
+    )
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

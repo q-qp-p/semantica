@@ -8,10 +8,13 @@ import re
 import sys
 from typing import Any, Callable, cast
 
+from rich.console import Console
+
 DOCS = "docs"
 ALL_MD: list[str] = glob.glob(f"{DOCS}/**/*.md", recursive=True)
 
 failures: list[str] = []
+console = Console()
 
 
 def check(label: str) -> Callable[[Callable[[], list[str]]], None]:
@@ -19,12 +22,12 @@ def check(label: str) -> Callable[[Callable[[], list[str]]], None]:
     def decorator(fn: Callable[[], list[str]]) -> None:
         issues = fn()
         if issues:
-            print(f"FAIL  {label}")
+            console.print(f"[bold red]FAIL[/bold red]  {label}")
             for msg in issues:
-                print(f"      - {msg}")
+                console.print(f"[dim]      - {msg}[/dim]")
             failures.extend(issues)
         else:
-            print(f"pass  {label}")
+            console.print(f"[bold green]pass[/bold green]  {label}")
     return decorator
 
 
@@ -162,9 +165,9 @@ def _() -> list[str]:
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────
-print()
+console.print()
 if failures:
-    print(f"FAILED  {len(failures)} issue(s) found")
+    console.print(f"[bold red]FAILED[/bold red]  {len(failures)} issue(s) found")
     sys.exit(1)
 else:
-    print("All checks passed")
+    console.print("[bold green]All checks passed[/bold green]")

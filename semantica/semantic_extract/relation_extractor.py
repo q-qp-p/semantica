@@ -425,18 +425,18 @@ class RelationExtractor:
                             "model", "en_core_web_sm"
                         )
 
-                    # Print progress if verbose mode is enabled (only for LLM method to avoid spam)
                     verbose_mode = self.verbose or options.get("verbose", False)
                     if verbose_mode and method_name == "llm":
-                        import sys
-                        print(f"    [RelationExtractor] Processing with {method_name}...", flush=True, file=sys.stdout)
-                    
+                        self.logger.debug(
+                            "[RelationExtractor] Processing with %s...", method_name
+                        )
+
                     relations = method_func(text, entities, **method_options)
-                    
-                    # Print result count if verbose (only for LLM method)
+
                     if verbose_mode and method_name == "llm" and len(relations) > 0:
-                        import sys
-                        print(f"    [RelationExtractor] Extracted {len(relations)} relations", flush=True, file=sys.stdout)
+                        self.logger.debug(
+                            "[RelationExtractor] Extracted %d relations", len(relations)
+                        )
 
                     # Apply weighted scoring if relation_types are provided
                     if relation_types:
@@ -471,12 +471,7 @@ class RelationExtractor:
                             return result
 
                 except Exception as e:
-                    self.logger.warning(f"Method {method_name} failed: {e}")
-                    if verbose_mode:
-                        import sys
-                        print(f"    [RelationExtractor] ERROR: Method {method_name} failed: {e}", flush=True, file=sys.stderr)
-                        import traceback
-                        traceback.print_exc(file=sys.stderr)
+                    self.logger.warning("Method %s failed: %s", method_name, e, exc_info=verbose_mode)
                     continue
 
             # Use first successful method or combine

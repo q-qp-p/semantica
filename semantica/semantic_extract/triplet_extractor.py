@@ -468,11 +468,11 @@ class TripletExtractor:
                             if api_key:
                                 method_options["api_key"] = api_key
 
-                    # Print progress if verbose mode is enabled (only for LLM method to avoid spam)
                     verbose_mode = options.get("verbose", False) or self.config.get("verbose", False)
                     if verbose_mode and method_name == "llm":
-                        import sys
-                        print(f"    [TripletExtractor] Processing with {method_name}...", flush=True, file=sys.stdout)
+                        self.logger.debug(
+                            "[TripletExtractor] Processing with %s...", method_name
+                        )
 
                     triplets = method_func(
                         text,
@@ -481,10 +481,10 @@ class TripletExtractor:
                         **method_options,
                     )
 
-                    # Print result count if verbose (only for LLM method)
                     if verbose_mode and method_name == "llm" and len(triplets) > 0:
-                        import sys
-                        print(f"    [TripletExtractor] Extracted {len(triplets)} triplets", flush=True, file=sys.stdout)
+                        self.logger.debug(
+                            "[TripletExtractor] Extracted %d triplets", len(triplets)
+                        )
 
                     # Apply weighted scoring if triplet_types are provided
                     if triplet_types:
@@ -520,13 +520,8 @@ class TripletExtractor:
                             return result
 
                 except Exception as e:
-                    self.logger.warning(f"Method {method_name} failed: {e}")
                     verbose_mode = options.get("verbose", False) or self.config.get("verbose", False)
-                    if verbose_mode:
-                        import sys
-                        print(f"    [TripletExtractor] ERROR: Method {method_name} failed: {e}", flush=True, file=sys.stderr)
-                        import traceback
-                        traceback.print_exc(file=sys.stderr)
+                    self.logger.warning("Method %s failed: %s", method_name, e, exc_info=verbose_mode)
                     continue
 
             # Use first successful method or fallback to relation conversion
