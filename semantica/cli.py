@@ -250,7 +250,7 @@ def _run_build(cli_ctx: CLIContext, sources: Sequence[str]) -> None:
             spinner="dots",
         ):
             result = framework.build_knowledge_base(sources=list(sources))
-    else:
+    elif not cli_ctx.json_output:
         result: Dict[str, Any] = {}
         with Progress(
             SpinnerColumn(),
