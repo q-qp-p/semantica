@@ -620,6 +620,8 @@ def shell(ctx: click.Context) -> None:
     try:
         import readline as _rl; del _rl  # side-effect: enables line editing on Unix
     except ImportError:
+        # Optional dependency: readline may be unavailable on some platforms
+        # (e.g., certain Windows/Python builds). Continue without line editing.
         pass
 
     if not cli_ctx.quiet:
