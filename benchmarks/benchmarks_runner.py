@@ -18,6 +18,17 @@ def run_benchmarks():
     parser.add_argument(
         "--strict", action="store_true", help="Fail script if performance regresses"
     )
+    parser.add_argument(
+        "--module",
+        type=str,
+        choices=[
+            "context", "context_graph_effectiveness", "context_memory", 
+            "core_processing", "export", "input_layer", "normalize", 
+            "ontology", "output_orchestration", "quality_assurance", 
+            "storage", "visualization"
+        ],
+        help="Run benchmarks for specific module only"
+    )
     args = parser.parse_args()
 
     console.print(Rule("[bold cyan]Semantica Benchmark Suite[/bold cyan]", style="cyan"))
@@ -28,11 +39,15 @@ def run_benchmarks():
     current_json = f"benchmarks/results/run_{timestamp}.json"
     baseline_json = "benchmarks/results/baseline.json"
 
+    # Build test path based on module selection
+    module_path = args.module + "/" if args.module else ""
+    test_path = f"benchmarks/{module_path}"
+
     cmd = [
         sys.executable,
         "-m",
         "pytest",
-        "benchmarks/",
+        test_path,
         "-p", "no:typeguard",
         "-p", "no:langsmith",
         "--benchmark-only",
