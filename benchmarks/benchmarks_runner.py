@@ -10,13 +10,36 @@ from rich.rule import Rule
 console = Console()
 
 
+def _discover_modules() -> list[str]:
+    benchmarks_dir = "benchmarks"
+    _excluded = {"results", "__pycache__"}
+    return sorted(
+        d for d in os.listdir(benchmarks_dir)
+        if os.path.isdir(os.path.join(benchmarks_dir, d))
+        and not d.startswith(("_", "."))
+        and d not in _excluded
+    )
+
+
 def run_benchmarks():
     """
     Master Runner for Semantica Benchmarks.
     """
+    available_modules = _discover_modules()
+
     parser = argparse.ArgumentParser(description="Run Semantica Benchmarks")
     parser.add_argument(
         "--strict", action="store_true", help="Fail script if performance regresses"
+    )
+    parser.add_argument(
+        "--module",
+        type=str,
+        choices=available_modules,
+        help=(
+            "Run benchmarks for a specific module only "
+            "(default: all modules). "
+            f"Available: {', '.join(available_modules)}"
+        ),
     )
     args = parser.parse_args()
 
@@ -28,11 +51,22 @@ def run_benchmarks():
     current_json = f"benchmarks/results/run_{timestamp}.json"
     baseline_json = "benchmarks/results/baseline.json"
 
+    if args.module:
+        test_path = os.path.join("benchmarks", args.module)
+        if not os.path.isdir(test_path):
+            console.print(
+                f"[bold red] ✗[/bold red] Module directory not found: {test_path}"
+            )
+            sys.exit(1)
+        console.print(f"[dim]Module filter:[/dim] {args.module}")
+    else:
+        test_path = "benchmarks/"
+
     cmd = [
         sys.executable,
         "-m",
         "pytest",
-        "benchmarks/",
+        test_path,
         "-p", "no:typeguard",
         "-p", "no:langsmith",
         "--benchmark-only",
