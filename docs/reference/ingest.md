@@ -1,6 +1,6 @@
 ---
 title: "Ingest Module"
-description: "Universal data ingestion from files, Parquet, XML, web, feeds, streams, repositories, email, and databases."
+description: "Universal data ingestion from files, Parquet, XML, web, public APIs, feeds, streams, repositories, email, and databases."
 icon: "database"
 ---
 
@@ -12,6 +12,8 @@ icon: "database"
 | --- | --- |
 | `FileIngestor` | PDF, DOCX, HTML, JSON, CSV, Excel, PPTX, ZIP/TAR — type auto-detected from extension |
 | `WebIngestor` | Web scraping and crawling with JavaScript rendering support |
+| `RESTIngestor` | Generic REST API ingestion with headers, params, retries, pagination, and batch requests |
+| `PublicAPIIngestor` | No-auth public API ingestion with examples, detection, rate limiting, and JSON/CSV/XML parsing |
 | `FeedIngestor` | RSS/Atom feed ingestion with live monitoring via `FeedMonitor` |
 | `StreamIngestor` | Real-time ingestion from Kafka, RabbitMQ, AWS Kinesis, and Apache Pulsar |
 | `RepoIngestor` | Git repositories — source files, commit history, README, and metadata |
@@ -31,6 +33,9 @@ icon: "database"
   </Card>
   <Card title="XMLIngestor" icon="code">
     XXE-safe lxml with XSD/DTD validation and directory scanning (v0.5.0).
+  </Card>
+  <Card title="PublicAPIIngestor" icon="globe">
+    Credential-free public API ingestion with pre-configured examples for JSONPlaceholder, REST Countries, Data.gov, and Open-Meteo.
   </Card>
   <Card title="StreamIngestor" icon="wave-square">
     Real-time ingestion from Kafka, RabbitMQ, AWS Kinesis, and Apache Pulsar.
@@ -170,6 +175,44 @@ icon: "database"
     )
 
     sources = ingestor.ingest_url("https://example.com/about")
+    ```
+
+    ### PublicAPIIngestor
+
+    Use this for public REST-style APIs that do not require keys or tokens:
+
+    ```python
+    from semantica.ingest import PublicAPIExamples, PublicAPIIngestor, ingest
+
+    ingestor = PublicAPIIngestor(rate_limit_delay=1.0)
+
+    posts = ingestor.ingest_public_api(
+        "https://jsonplaceholder.typicode.com/posts"
+    )
+
+    countries = ingestor.ingest_example("rest_countries_all")
+
+    datasets = ingestor.ingest_example(
+        "data_gov_datasets",
+        params={"q": "transportation", "rows": 5},
+    )
+
+    public = ingestor.detect_public_api(
+        "https://jsonplaceholder.typicode.com/posts"
+    )
+
+    result = ingest(
+        "https://jsonplaceholder.typicode.com/posts",
+        source_type="public_api",
+    )
+    ```
+
+    Public API ingestion rejects common auth headers and query parameters by
+    default. Use `RESTIngestor` for authenticated APIs.
+
+    ```python
+    examples = PublicAPIExamples.names()
+    mock_payload = PublicAPIExamples.sample_response("jsonplaceholder_posts")
     ```
 
     ### FeedIngestor (RSS/Atom)

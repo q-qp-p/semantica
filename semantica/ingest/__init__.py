@@ -76,7 +76,8 @@ Database Ingestion:
     - Multi-database Support: PostgreSQL, MySQL, SQLite, Oracle, SQL Server abstraction
 
 Key Features:
-    - Multiple ingestion source types (file, web, feed, stream, repo, email, db)
+    - Multiple ingestion source types (file, web, public API, feed, stream,
+      repo, email, db)
     - Unified ingestion function with source type dispatch
     - Method registry for extensibility
     - Configuration management with environment variables and config files
@@ -87,6 +88,7 @@ Key Features:
 Main Classes:
     - FileIngestor: Local and cloud file processing
     - WebIngestor: Web scraping and crawling
+    - PublicAPIIngestor: No-auth public REST API processing
     - FeedIngestor: RSS/Atom feed processing
     - StreamIngestor: Real-time stream processing
     - RepoIngestor: Git repository processing
@@ -102,6 +104,7 @@ Convenience Functions:
     - ingest: Unified ingestion function with source type dispatch
     - ingest_file: File ingestion wrapper
     - ingest_web: Web ingestion wrapper
+    - ingest_public_api: Public API ingestion wrapper
     - ingest_feed: Feed ingestion wrapper
     - ingest_stream: Stream ingestion wrapper
     - ingest_repository: Repository ingestion wrapper
@@ -144,6 +147,7 @@ from .methods import (
     ingest_mcp,
     ingest_ontology,
     ingest_parquet,
+    ingest_public_api,
     ingest_repository,
     ingest_stream,
     ingest_web,
@@ -160,6 +164,13 @@ _LAZY_EXPORTS: Dict[str, Tuple[str, str]] = {
     "RobotsChecker": (".web_ingestor", "RobotsChecker"),
     "ContentExtractor": (".web_ingestor", "ContentExtractor"),
     "SitemapCrawler": (".web_ingestor", "SitemapCrawler"),
+    # REST and public API ingestion
+    "RESTIngestor": (".api_ingestor", "RESTIngestor"),
+    "APIData": (".api_ingestor", "APIData"),
+    "PublicAPIIngestor": (".public_api_ingestor", "PublicAPIIngestor"),
+    "PublicAPIExample": (".public_api_ingestor", "PublicAPIExample"),
+    "PublicAPIExamples": (".public_api_ingestor", "PublicAPIExamples"),
+    "PublicAPIDetection": (".public_api_ingestor", "PublicAPIDetection"),
     # Feed ingestion
     "FeedIngestor": (".feed_ingestor", "FeedIngestor"),
     "FeedItem": (".feed_ingestor", "FeedItem"),
@@ -269,6 +280,13 @@ __all__ = [
     "RobotsChecker",
     "ContentExtractor",
     "SitemapCrawler",
+    # REST and public API ingestion
+    "RESTIngestor",
+    "APIData",
+    "PublicAPIIngestor",
+    "PublicAPIExample",
+    "PublicAPIExamples",
+    "PublicAPIDetection",
     # Feed ingestion
     "FeedIngestor",
     "FeedItem",
@@ -332,6 +350,7 @@ __all__ = [
     "ingest_database",
     "ingest_ontology",
     "ingest_parquet",
+    "ingest_public_api",
     "ingest_xml",
     "ingest_mcp",
     "get_ingest_method",

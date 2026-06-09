@@ -1,6 +1,6 @@
 # Ingest Module Usage Guide
 
-This guide demonstrates how to use the ingest module for ingesting data from various sources including files, XML, web content, feeds, streams, repositories, emails, and databases.
+This guide demonstrates how to use the ingest module for ingesting data from various sources including files, XML, web content, public APIs, feeds, streams, repositories, emails, and databases.
 
 ## Table of Contents
 
@@ -9,17 +9,18 @@ This guide demonstrates how to use the ingest module for ingesting data from var
 3. [Parquet Ingestion](#parquet-ingestion)
 4. [XML Ingestion](#xml-ingestion)
 5. [Web Ingestion](#web-ingestion)
-6. [Feed Ingestion](#feed-ingestion)
-7. [Stream Ingestion](#stream-ingestion)
-8. [Repository Ingestion](#repository-ingestion)
-9. [Email Ingestion](#email-ingestion)
-10. [Database Ingestion](#database-ingestion)
-11. [MCP Server Ingestion](#mcp-server-ingestion)
-12. [Unified Ingestion](#unified-ingestion)
-13. [Using Methods](#using-methods)
-14. [Using Registry](#using-registry)
-15. [Configuration](#configuration)
-16. [Advanced Examples](#advanced-examples)
+6. [Public API Ingestion](#public-api-ingestion)
+7. [Feed Ingestion](#feed-ingestion)
+8. [Stream Ingestion](#stream-ingestion)
+9. [Repository Ingestion](#repository-ingestion)
+10. [Email Ingestion](#email-ingestion)
+11. [Database Ingestion](#database-ingestion)
+12. [MCP Server Ingestion](#mcp-server-ingestion)
+13. [Unified Ingestion](#unified-ingestion)
+14. [Using Methods](#using-methods)
+15. [Using Registry](#using-registry)
+16. [Configuration](#configuration)
+17. [Advanced Examples](#advanced-examples)
 
 ## Basic Usage
 
@@ -40,6 +41,12 @@ result = ingest("catalog.xml")
 # Ingest from web URL
 result = ingest("https://example.com", source_type="web")
 
+# Ingest from a public API with no authentication
+result = ingest(
+    "https://jsonplaceholder.typicode.com/posts",
+    source_type="public_api",
+)
+
 # Ingest from feed
 result = ingest("https://example.com/feed.xml", source_type="feed")
 ```
@@ -47,12 +54,13 @@ result = ingest("https://example.com/feed.xml", source_type="feed")
 ### Using Main Classes
 
 ```python
-from semantica.ingest import FileIngestor, WebIngestor, XMLIngestor
+from semantica.ingest import FileIngestor, PublicAPIIngestor, WebIngestor, XMLIngestor
 
 # Create ingestor
 file_ingestor = FileIngestor()
 web_ingestor = WebIngestor(delay=1.0, respect_robots=True)
 xml_ingestor = XMLIngestor()
+api_ingestor = PublicAPIIngestor(rate_limit_delay=1.0)
 
 # Ingest files
 files = file_ingestor.ingest_directory("./documents", recursive=True)
@@ -62,6 +70,11 @@ content = web_ingestor.ingest_url("https://example.com")
 
 # Ingest XML content
 xml_data = xml_ingestor.ingest_file("catalog.xml")
+
+# Ingest public API records without credentials
+api_data = api_ingestor.ingest_public_api(
+    "https://jsonplaceholder.typicode.com/posts"
+)
 ```
 
 ## File Ingestion
@@ -355,6 +368,117 @@ metadata = extractor.extract_metadata(html, url="https://example.com")
 # Extract links
 links = extractor.extract_links(html, base_url="https://example.com")
 ```
+
+## Public API Ingestion
+
+Public API ingestion is for REST-style endpoints that do not require API keys,
+OAuth tokens, or other credentials. It is useful for examples, tests, CI, and
+contributor development because all requests are made without authentication.
+
+Use `RESTIngestor` instead when an endpoint requires `Authorization`,
+`X-API-Key`, `api_key`, or similar credentials.
+
+### Public Endpoint Ingestion
+
+```python
+from semantica.ingest import PublicAPIIngestor, ingest_public_api
+
+# Using convenience function
+posts = ingest_public_api(
+    "https://jsonplaceholder.typicode.com/posts",
+    rate_limit_delay=1.0,
+)
+
+# Using class directly
+ingestor = PublicAPIIngestor(rate_limit_delay=1.0)
+users = ingestor.ingest_public_api(
+    "https://jsonplaceholder.typicode.com/users",
+)
+
+print(posts.metadata["record_count"])
+print(users.data[0]["name"])
+```
+
+### Pre-Configured Public API Examples
+
+```python
+from semantica.ingest import PublicAPIExamples, PublicAPIIngestor
+
+print(PublicAPIExamples.names())
+print(PublicAPIExamples.endpoints())
+
+ingestor = PublicAPIIngestor(rate_limit_delay=1.0)
+
+# JSONPlaceholder: fake REST resources for testing
+posts = ingestor.ingest_example("jsonplaceholder_posts")
+
+# REST Countries: country reference data
+countries = ingestor.ingest_example("rest_countries_all")
+
+# Data.gov catalog search: nested records extracted from result.results
+datasets = ingestor.ingest_example(
+    "data_gov_datasets",
+    params={"q": "transportation", "rows": 5},
+)
+```
+
+### Public API Detection
+
+```python
+from semantica.ingest import PublicAPIIngestor
+
+ingestor = PublicAPIIngestor(rate_limit_delay=1.0)
+
+detection = ingestor.detect_public_api(
+    "https://jsonplaceholder.typicode.com/posts"
+)
+
+print(detection.is_public)
+print(detection.requires_auth)
+print(detection.response_status)
+```
+
+Detection is endpoint-level. A successful no-auth response means that endpoint
+appears public; it does not prove that every endpoint on the same API is public.
+
+### JSON, CSV, and XML Responses
+
+```python
+from semantica.ingest import PublicAPIIngestor
+
+ingestor = PublicAPIIngestor(rate_limit_delay=1.0)
+
+# JSON is auto-detected from Content-Type or response body
+json_data = ingestor.ingest_public_api(
+    "https://jsonplaceholder.typicode.com/todos"
+)
+
+# CSV can be parsed into dictionaries
+csv_data = ingestor.ingest_public_api(
+    "https://example.com/data.csv",
+    response_format="csv",
+)
+
+# XML is converted to nested dictionaries; record_path can select child nodes
+xml_data = ingestor.ingest_public_api(
+    "https://example.com/data.xml",
+    response_format="xml",
+    record_path="children",
+)
+```
+
+### Testing Helpers
+
+```python
+from semantica.ingest import PublicAPIExamples
+
+# Mock payloads for unit tests without live network calls
+payload = PublicAPIExamples.sample_response("jsonplaceholder_posts")
+data_gov_payload = PublicAPIExamples.sample_response("data_gov_datasets")
+```
+
+These fixtures are intentionally small and credential-free. Use mocked HTTP
+responses in CI rather than depending on public API uptime.
 
 ## Feed Ingestion
 
@@ -1076,6 +1200,15 @@ result = ingest("postgresql://user:pass@localhost/db")  # Auto-detects database
 result = ingest("http://localhost:8000/mcp", source_type="mcp")  # MCP server ingestion via URL
 ```
 
+Public APIs should be explicit because regular URLs default to web ingestion:
+
+```python
+result = ingest(
+    "https://jsonplaceholder.typicode.com/posts",
+    source_type="public_api",
+)
+```
+
 ### Explicit Source Type
 
 ```python
@@ -1085,6 +1218,7 @@ from semantica.ingest import ingest
 result = ingest("document.pdf", source_type="file")
 result = ingest("catalog.xml", source_type="xml")
 result = ingest("https://example.com", source_type="web")
+result = ingest("https://jsonplaceholder.typicode.com/posts", source_type="public_api")
 result = ingest("https://example.com/feed.xml", source_type="feed")
 ```
 
@@ -1112,6 +1246,7 @@ print(f"Ingested {len(result['files'])} files")
 from semantica.ingest.methods import (
     ingest_file,
     ingest_web,
+    ingest_public_api,
     ingest_feed,
     ingest_stream,
     ingest_repository,
@@ -1127,6 +1262,12 @@ files = ingest_file("./documents", method="directory")
 
 # Web ingestion
 content = ingest_web("https://example.com", method="url")
+
+# Public API ingestion
+api_data = ingest_public_api(
+    "https://jsonplaceholder.typicode.com/posts",
+    method="endpoint",
+)
 
 # Feed ingestion
 feed = ingest_feed("https://example.com/feed.xml", method="rss")

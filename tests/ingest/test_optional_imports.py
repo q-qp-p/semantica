@@ -56,6 +56,19 @@ print(FileIngestor.__name__, callable(ingest_file))
     assert "FileIngestor True" in result.stdout
 
 
+def test_public_api_ingestion_imports_without_web_scraping_backends() -> None:
+    result = _run_python_with_blocked_modules(
+        """
+from semantica.ingest import PublicAPIIngestor, RESTIngestor, ingest_public_api
+print(PublicAPIIngestor.__name__, RESTIngestor.__name__, callable(ingest_public_api))
+""",
+        ("bs4",),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "PublicAPIIngestor RESTIngestor True" in result.stdout
+
+
 def test_repository_ingestion_reports_missing_gitpython_when_used() -> None:
     result = _run_python_with_blocked_modules(
         """

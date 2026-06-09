@@ -13,6 +13,7 @@ Supported Registration Types:
         * "repo": Repository ingestion methods
         * "email": Email ingestion methods
         * "db": Database ingestion methods
+        * "public_api": Public no-auth API ingestion methods
         * "parquet": Parquet file and dataset ingestion methods
         * "ingest": General ingestion methods
 
@@ -58,6 +59,8 @@ class MethodRegistry:
         "repo": {},
         "email": {},
         "db": {},
+        "api": {},
+        "public_api": {},
         "mcp": {},
         "parquet": {},
         "xml": {},
@@ -71,7 +74,8 @@ class MethodRegistry:
 
         Args:
             task: Task type such as "file", "web", "feed", "stream",
-                "repo", "email", "db", "mcp", "parquet", "xml", or "ingest"
+                "repo", "email", "db", "public_api", "mcp", "parquet",
+                "xml", or "ingest"
             name: Method name
             method_func: Method function
         """
@@ -86,7 +90,8 @@ class MethodRegistry:
 
         Args:
             task: Task type such as "file", "web", "feed", "stream",
-                "repo", "email", "db", "mcp", "parquet", "xml", or "ingest"
+                "repo", "email", "db", "public_api", "mcp", "parquet",
+                "xml", or "ingest"
             name: Method name
 
         Returns:
@@ -116,7 +121,8 @@ class MethodRegistry:
 
         Args:
             task: Task type such as "file", "web", "feed", "stream",
-                "repo", "email", "db", "mcp", "parquet", or "ingest"
+                "repo", "email", "db", "public_api", "mcp", "parquet",
+                "xml", or "ingest"
             name: Method name
         """
         if task in cls._methods and name in cls._methods[task]:
