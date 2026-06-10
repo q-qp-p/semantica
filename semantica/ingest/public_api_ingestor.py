@@ -565,7 +565,7 @@ class PublicAPIIngestor(RESTIngestor):
 
     def ingest_examples(self, names: List[str], **options) -> List[APIData]:
         """Ingest multiple pre-configured public API examples."""
-        return [self.ingest_example(name, **options) for name in names]
+        return [self.ingest_example(name, **copy.deepcopy(options)) for name in names]
 
     def batch_public_apis(
         self,
@@ -578,7 +578,7 @@ class PublicAPIIngestor(RESTIngestor):
         for endpoint in endpoints:
             try:
                 results.append(
-                    self.ingest_public_api(endpoint, method=method, **options)
+                    self.ingest_public_api(endpoint, method=method, **copy.deepcopy(options))
                 )
             except Exception as exc:
                 self.logger.warning(f"Failed to fetch public API {endpoint}: {exc}")

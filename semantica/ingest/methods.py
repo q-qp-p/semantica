@@ -552,6 +552,7 @@ def ingest_public_api(
             "delay",
             "fail_fast",
             "max_retries",
+            "rate_limit_delay",
             "validate_no_auth",
         ):
             request_kwargs.pop(config_only_key, None)
