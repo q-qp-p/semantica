@@ -30,6 +30,12 @@ Web Ingestion:
     - "sitemap": Sitemap-based crawling
     - "crawl": Domain crawling
 
+Public API Ingestion:
+    - "endpoint": No-auth public API endpoint ingestion
+    - "example": Pre-configured public API examples
+    - "detect": Endpoint-level public/no-auth detection
+    - "batch": Multiple no-auth public API endpoints
+
 Feed Ingestion:
     - "rss": RSS feed ingestion
     - "atom": Atom feed ingestion
@@ -138,6 +144,7 @@ Key Features:
 Main Functions:
     - ingest_file: File ingestion wrapper
     - ingest_web: Web ingestion wrapper
+    - ingest_public_api: No-auth public API ingestion wrapper
     - ingest_feed: Feed ingestion wrapper
     - ingest_stream: Stream ingestion wrapper
     - ingest_repository: Repository ingestion wrapper
@@ -171,12 +178,14 @@ from .file_ingestor import FileIngestor, FileObject
 from .registry import method_registry
 
 if TYPE_CHECKING:
+    from .api_ingestor import APIData
     from .db_ingestor import TableData
     from .email_ingestor import EmailData
     from .feed_ingestor import FeedData
     from .mcp_ingestor import MCPData
     from .ontology_ingestor import OntologyData
     from .parquet_ingestor import ParquetData
+    from .public_api_ingestor import PublicAPIDetection
     from .stream_ingestor import StreamProcessor
     from .web_ingestor import WebContent
     from .xml_ingestor import XMLIngestionData
@@ -480,6 +489,106 @@ def ingest_web(
         raise
     except Exception as e:
         logger.error(f"Failed to ingest web: {e}")
+        raise
+
+
+def ingest_public_api(
+    source: Union[str, List[str]],
+    method: str = "endpoint",
+    **kwargs,
+) -> Union[
+    APIData,
+    List[APIData],
+    PublicAPIDetection,
+    List[PublicAPIDetection],
+    Dict[str, Any],
+]:
+    """
+    Ingest public, no-auth API endpoints.
+
+    Args:
+        source: Endpoint URL, example name, or list of endpoint URLs/example names
+        method: Public API ingestion method:
+            - "endpoint": Ingest a single no-auth endpoint
+            - "example": Ingest a pre-configured public API example
+            - "detect": Check whether endpoint access works without auth
+            - "batch": Ingest multiple no-auth endpoints
+            - "examples": List pre-configured public API examples
+        **kwargs: Additional options passed to PublicAPIIngestor. Use
+            ``http_method`` to override the HTTP method because ``method`` is
+            reserved for ingestion dispatch.
+
+    Returns:
+        APIData, list of APIData, detection result(s), or examples dictionary
+
+    Examples:
+        >>> from semantica.ingest.methods import ingest_public_api
+        >>> data = ingest_public_api("https://jsonplaceholder.typicode.com/posts")
+        >>> countries = ingest_public_api("rest_countries_all", method="example")
+        >>> detection = ingest_public_api(
+        ...     "https://jsonplaceholder.typicode.com/posts",
+        ...     method="detect",
+        ... )
+    """
+    custom_method = method_registry.get("public_api", method)
+    if custom_method and custom_method != ingest_public_api:
+        try:
+            return custom_method(source, **kwargs)
+        except Exception as e:
+            logger.warning(
+                f"Custom method {method} failed: {e}, falling back to default"
+            )
+
+    try:
+        from .public_api_ingestor import PublicAPIExamples, PublicAPIIngestor
+
+        config = ingest_config.get_method_config("public_api")
+        config.update(kwargs)
+        ingestor = PublicAPIIngestor(**config)
+
+        request_kwargs = kwargs.copy()
+        for config_only_key in (
+            "backoff_factor",
+            "delay",
+            "fail_fast",
+            "max_retries",
+            "rate_limit_delay",
+            "validate_no_auth",
+        ):
+            request_kwargs.pop(config_only_key, None)
+
+        http_method = request_kwargs.pop("http_method", None)
+        if http_method:
+            request_kwargs["method"] = http_method
+
+        if method in {"examples", "list_examples"}:
+            tag = request_kwargs.pop("tag", None)
+            return {"examples": PublicAPIExamples.list_examples(tag=tag)}
+
+        if method in {"detect", "detection"}:
+            if isinstance(source, list):
+                return [
+                    ingestor.detect_public_api(endpoint, **request_kwargs)
+                    for endpoint in source
+                ]
+            return ingestor.detect_public_api(source, **request_kwargs)
+
+        if method in {"example", "sample"}:
+            if isinstance(source, list):
+                return [
+                    ingestor.ingest_example(name, **request_kwargs) for name in source
+                ]
+            return ingestor.ingest_example(source, **request_kwargs)
+
+        if method == "batch" or isinstance(source, list):
+            if not isinstance(source, list):
+                raise ProcessingError("Public API batch ingestion requires a list")
+            return ingestor.batch_public_apis(source, **request_kwargs)
+
+        return ingestor.ingest_public_api(source, **request_kwargs)
+
+    except Exception as e:
+        logger.error(f"Failed to ingest public API: {e}")
         raise
 
 
@@ -1085,6 +1194,7 @@ def ingest(
         source_type: Source type (auto-detected if not specified)
             - "file": File ingestion
             - "web": Web ingestion
+            - "public_api" / "api": No-auth public API ingestion
             - "feed": Feed ingestion
             - "stream": Stream ingestion
             - "repo": Repository ingestion
@@ -1100,9 +1210,9 @@ def ingest(
         Dict with ingestion results. The top-level key depends on source_type:
             - "files": file ingestion
             - "content": web ingestion
+            - "data": public API, database, parquet, or MCP ingestion
             - "feeds": feed ingestion
             - "emails": email ingestion
-            - "data": database, parquet, or MCP ingestion
             - "ontology": ontology ingestion
             - "xml": XML file or directory ingestion (use ``result["xml"]``)
 
@@ -1172,6 +1282,10 @@ def ingest(
         return {"files": ingest_file(sources, method=method or "file", **kwargs)}
     elif source_type == "web":
         return {"content": ingest_web(sources, method=method or "url", **kwargs)}
+    elif source_type in {"public_api", "api"}:
+        return {
+            "data": ingest_public_api(sources, method=method or "endpoint", **kwargs)
+        }
     elif source_type == "feed":
         return {"feeds": ingest_feed(sources, method=method or "rss", **kwargs)}
     elif source_type == "stream":
@@ -1250,6 +1364,17 @@ method_registry.register("web", "default", ingest_web)
 method_registry.register("web", "url", ingest_web)
 method_registry.register("web", "sitemap", ingest_web)
 method_registry.register("web", "crawl", ingest_web)
+method_registry.register("public_api", "default", ingest_public_api)
+method_registry.register("public_api", "endpoint", ingest_public_api)
+method_registry.register("public_api", "example", ingest_public_api)
+method_registry.register("public_api", "sample", ingest_public_api)
+method_registry.register("public_api", "detect", ingest_public_api)
+method_registry.register("public_api", "detection", ingest_public_api)
+method_registry.register("public_api", "batch", ingest_public_api)
+method_registry.register("public_api", "examples", ingest_public_api)
+method_registry.register("public_api", "list_examples", ingest_public_api)
+method_registry.register("api", "public", ingest_public_api)
+method_registry.register("api", "endpoint", ingest_public_api)
 method_registry.register("feed", "default", ingest_feed)
 method_registry.register("feed", "rss", ingest_feed)
 method_registry.register("feed", "atom", ingest_feed)

@@ -11,6 +11,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Public API Ingestion Support** (#602) by @Luffy2208
+  - Added `PublicAPIIngestor` class built on top of `RESTIngestor` for credential-free REST endpoints
+  - Added `PublicAPIExample` and `PublicAPIExamples` catalog with 6 pre-configured no-auth examples:
+    - `jsonplaceholder_posts`, `jsonplaceholder_users`, `jsonplaceholder_todos` — fake REST resources for testing
+    - `rest_countries_all` — country reference data
+    - `data_gov_datasets` — Data.gov CKAN catalog search
+    - `open_meteo_forecast` — weather forecast (Berlin sample)
+  - Added `PublicAPIDetection` dataclass for endpoint-level public/no-auth detection
+  - Endpoint-level public API detection via `detect_public_api()` (informational, never raises)
+  - No-auth validation: rejects `Authorization`, `X-Api-Key`, and all common auth headers before sending the request
+  - Auth credential detection in URL query strings (`api_key=`, `token=`, `access_token=`, etc.)
+  - Polite rate limiting with per-request and per-ingestor `rate_limit_delay` controls
+  - Response parsing for JSON, CSV, and XML with `response_format="auto"` content-type detection
+  - HTML response guard — `text/html` responses are never misclassified as XML
+  - Nested `record_path` dot-notation extraction (e.g. `"result.results"` for Data.gov envelope)
+  - `_to_records` normalization with automatic envelope unwrapping for `items`, `data`, `results`, `records` keys
+  - `batch_public_apis()` for multi-endpoint ingestion with optional `fail_fast`
+  - `ingest_examples()` for bulk example ingestion
+  - `sample_response()` fixtures on `PublicAPIExamples` for mocked unit tests without live network calls
+  - `ingest_public_api()` convenience function and `ingest(..., source_type="public_api")` unified dispatch
+  - `source_type="api"` alias supported in `ingest()`
+  - Registry integration: `public_api` and `api` task namespaces with `endpoint`, `example`, `detect`, `batch`, `examples` methods
+  - Lazy-import exports of `RESTIngestor`, `APIData`, `PublicAPIIngestor`, `PublicAPIExample`, `PublicAPIExamples`, `PublicAPIDetection` from `semantica.ingest`
+  - Documentation: updated `docs/reference/ingest.md`, `docs/modules.md`, and `semantica/ingest/ingest_usage.md` with full usage examples
+  - 18 mocked tests covering JSON/CSV/XML parsing, nested record extraction, auth rejection, detection, string boolean config, batch dispatch, and unified `ingest()` routing
+  - 3 optional-import tests covering `defusedxml` fallback path and import isolation without web-scraping backends
+
+### Fixed
+
+- **Public API XML parsing hardened against malicious payloads** (#602) by @Luffy2208
+  - Replaced stdlib `xml.etree.ElementTree` with `defusedxml.ElementTree` (XXE/entity-expansion safe); falls back to a hardened `lxml` parser (`resolve_entities=False`, `no_network=True`, `load_dtd=False`, `huge_tree=False`) when `defusedxml` is not installed
+  - Added regression test asserting XXE entity payloads raise `ProcessingError`
+
+- **`validate_no_auth` config value not honoured when passed as a string** (#602) by @Luffy2208
+  - `bool("false")` evaluated to `True`, making `validate_no_auth=False` impossible via config files or environment variables; replaced with explicit `_coerce_bool()` that maps `"false"`, `"0"`, `"no"`, `"off"` → `False` and rejects unrecognised strings with `ValidationError`
+
+- **Auth credential detection extended to URL query strings** (#602) by @Sameer6305
+  - `detect_public_api()` and `ingest_public_api()` now scan the endpoint URL itself for auth parameters (`api_key`, `token`, `access_token`, etc.) via `urllib.parse.parse_qs`, not only request headers and explicit `params=` dicts
+  - Added regression tests for URL auth rejection (3 parametrized cases)
+
+- **`ingest_examples` and `batch_public_apis` mutable options mutation** (#602)
+  - Shared `**options` dict was passed by reference across loop iterations; mutable values such as `params` dicts were silently mutated after the first call, causing subsequent calls to receive a different (partially modified) options set; fixed by deep-copying options on each iteration
+
+- **`rate_limit_delay` forwarded twice in `ingest_public_api` method dispatcher** (#602)
+  - `rate_limit_delay` was consumed by the `PublicAPIIngestor` constructor via `config` but also leaked into `request_kwargs` forwarded to the ingestor method; added to the `config_only_key` strip list so it is consumed once at construction time only
+
 - **XML File Ingestion Support** (#560) by @Luffy2208
   - Added `XMLIngestor` class with `lxml` backend for parsing local XML files
   - Nested element hierarchy and flat element list extraction
